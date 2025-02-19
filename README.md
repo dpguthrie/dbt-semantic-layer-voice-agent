@@ -1,83 +1,117 @@
-# 🦜🎤 Voice ReAct Agent
+# Semantic Layer Assistant
 
-This is an implementation of a [ReAct](https://arxiv.org/abs/2210.03629)-style agent that uses OpenAI's new [Realtime API](https://platform.openai.com/docs/guides/realtime).
+A real-time voice and text interaction application that helps users analyze data using a semantic layer. This application enables natural language queries to explore metrics and dimensions, with support for both voice and text-based interactions.
 
-Specifically, we enable this model to call tools by providing it a list of [LangChain tools](https://python.langchain.com/docs/how_to/custom_tools/#creating-tools-from-functions). It is easy to write custom tools, and you can easily pass these to the model.
+## Features
 
-![](static/react.png)
+- Natural language querying of semantic layer metrics and dimensions
+- Real-time voice input processing using OpenAI's Real-time Voice API
+- WebSocket-based real-time communication
+- Vector store-based semantic search for metrics and dimensions
 
-## Installation
+## Architecture
 
-### Python
+The application consists of:
+- `server/`: Python backend using Starlette, LangChain, and dbt Semantic Layer
+- Vector store for efficient metric and dimension discovery
+- WebSocket-based real-time communication layer
 
-Make sure you're running Python 3.10 or later, then install `uv` to be able to run the project:
+## Prerequisites
+
+- Python 3.12+
+- OpenAI API key with access to voice models
+- dbt semantic layer environment and credentials
+
+## Setup
+
+1. Copy the `.env.example` file to `.env` in the server directory and update with your credentials:
 
 ```bash
-pip install uv
+cp .env.example .env
 ```
 
-And make sure you have both `OPENAI_API_KEY` and `TAVILY_API_KEY` environment variables set up.
+The `.env` file should contain:
 
 ```bash
-export OPENAI_API_KEY=your_openai_api_key
-export TAVILY_API_KEY=your_tavily_api_key
+OPENAI_API_KEY=your_api_key_here
+SL__HOST=your_semantic_layer_host
+SL__ENVIRONMENT_ID=your_environment_id
+SL__TOKEN=your_semantic_layer_token
 ```
 
-Note: the Tavily API key is for the Tavily search engine, you can get an API key [here](https://app.tavily.com/). This is just an example tool, and if you do not want to use it you do not have to (see [Adding your own tools](#adding-your-own-tools))
+2. [Optional] Install dependencies:
 
-### TypeScript
+Create a virtual environment:
 
-Navigate into the `js_server` folder, then install required dependencies with `yarn`:
-
-```bash
-yarn
+```
+uv venv
 ```
 
-You will also need to copy the provided `js_server/.env.example` file to `.env` and fill in your OpenAI and Tavily keys.
+Include the development dependencies:
+```
+uv sync --all-extras
+```
 
-## Running the project
+Or, install the dependencies without the development dependencies:
 
-### Python
+```
+uv sync
+```
 
-To run the project, execute the following commands:
+## Running the Application
 
+1. Start the backend server:
 ```bash
-cd server
 uv run src/server/app.py
 ```
 
-### TypeScript
+2. Open your browser to `http://localhost:3000`
 
-```bash
-cd js_server
-yarn dev
-```
+## Development
 
-## Open the browser
+### Backend Components
 
-Now you can open the browser and navigate to `http://localhost:3000` to see the project running.
+The backend is built using:
+- Starlette for the web server
+- LangChain for AI agent and tool execution
+- dbt Semantic Layer for data access
+- Chroma for vector storage
+- WebSockets for real-time communication
 
-### Enable microphone
+Key files:
+- `server/src/langchain_openai_voice/__init__.py`: Core voice agent implementation
+- `server/src/server/app.py`: Starlette server implementation
+- `server/src/server/tools.py`: Semantic layer tool implementations
+- `server/src/server/vectorstore.py`: Vector store for metric/dimension discovery
+- `server/src/server/prompt.py`: Example queries and agent instructions
 
-You may need to make sure that your browser can access your microphone.
+### Query Examples
 
-- [Chrome](http://0.0.0.0:3000/)
+The system supports natural language queries like:
+- "Show me total revenue"
+- "What was our monthly revenue and profit for 2023?"
+- "Who are our top 10 salespeople by revenue?"
+- "Show me revenue by region for US customers"
+- "What's our daily revenue trend for the past 30 days?"
 
-## Adding your own tools
+## Contributing
 
-You can add your own tools by adding them to the `server/src/server/tools.py` file for Python or the `js_server/src/tools.ts` folder for TypeScript.
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
-## Adding your own custom instructions
+Please make sure to update tests as appropriate.
 
-You can add your own custom instructions by adding them to the `server/src/server/prompt.py` file for Python or the `js_server/src/prompt.ts` folder for TypeScript.
+### Development Process
 
-## Errors
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-- `WebSocket connection: HTTP 403`
-  - This error is due to account permissions from OpenAI side, your account/org doesn't have api access to Realtime API or insufficient funds.
-  - check if you have Realtime API access in the playground [here](https://platform.openai.com/playground/realtime).
+## Acknowledgments
 
-## Next steps
+This project was built upon the [LangChain React Voice Agent](https://github.com/langchain-ai/react-voice-agent) repository, which provides the foundation for creating ReAct-style agents using OpenAI's Realtime API.
 
-- [ ] Enable interrupting the AI
-- [ ] Enable changing of instructions/tools based on state
+## License
+
+This project is licensed under the MIT License - see below for details:
