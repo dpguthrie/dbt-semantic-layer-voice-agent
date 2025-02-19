@@ -1,7 +1,4 @@
-from typing import Any
-
-import pyarrow as pa
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class _PageContentModel(BaseModel):
@@ -104,41 +101,3 @@ class QueryParameters(BaseModel):
         default_factory=list
     )  # Format: "-metric_name" for desc, "metric_name" for asc
     where: list[str] = Field(default_factory=list)
-
-
-class QueryResult(BaseModel):
-    """Represents the complete result of a semantic layer query."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    sql: str = Field(description="The compiled SQL query")
-    sl_query: QueryParameters = Field(
-        description="The original semantic layer query parameters"
-    )
-    data: pa.Table = Field(description="The query result data as a PyArrow table")
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert the query result to a dictionary format."""
-        # First, detect and cast date/datetime columns to ensure proper handling
-        fields = []
-        for field in self.data.schema:
-            if pa.types.is_timestamp(field.type):
-                # Cast timestamp to date32 if it's a date column
-                fields.append(pa.field(field.name, pa.date32()))
-            else:
-                fields.append(field)
-
-        # Cast the table with the new schema
-        schema = pa.schema(fields)
-        casted_table = self.data.cast(schema)
-
-        # Convert to dictionary
-        data_dict = casted_table.to_pydict()
-
-        # Handle any remaining special types (like Decimal)
-        for column_name, values in data_dict.items():
-            data_dict[column_name] = [
-                float(v) if hasattr(v, "as_integer_ratio") else v for v in values
-            ]
-
-        return data_dict
