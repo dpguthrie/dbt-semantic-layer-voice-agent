@@ -2,7 +2,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 
 import uvicorn
 from starlette.applications import Starlette
@@ -17,7 +17,7 @@ from server.models import Message
 from server.prompt import INSTRUCTIONS
 from server.storage import ConversationStorage
 from server.tools import create_tools
-from server.utils import websocket_stream
+from server.utils import DateTimeEncoder, websocket_stream
 from server.vectorstore import SemanticLayerVectorStore
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,13 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
 async def list_conversations(request):
     """List all conversations."""
     conversations = request.app.state.storage.list_conversations()
-    return JSONResponse([conv.model_dump() for conv in conversations])
+    return JSONResponse(
+        json.loads(
+            json.dumps(
+                [conv.model_dump() for conv in conversations], cls=DateTimeEncoder
+            )
+        )
+    )
 
 
 async def get_conversation(request):
@@ -79,7 +85,9 @@ async def get_conversation(request):
     conversation_id = request.path_params["conversation_id"]
     conversation = request.app.state.storage.get_conversation(conversation_id)
     if conversation:
-        return JSONResponse(conversation.model_dump())
+        return JSONResponse(
+            json.loads(json.dumps(conversation.model_dump(), cls=DateTimeEncoder))
+        )
     return JSONResponse({"error": "Conversation not found"}, status_code=404)
 
 
@@ -88,7 +96,9 @@ async def create_conversation(request):
     data = await request.json()
     title = data.get("title", "New Conversation")
     conversation = request.app.state.storage.create_conversation(title)
-    return JSONResponse(conversation.model_dump())
+    return JSONResponse(
+        json.loads(json.dumps(conversation.model_dump(), cls=DateTimeEncoder))
+    )
 
 
 async def update_conversation(request):
@@ -118,19 +128,22 @@ async def websocket_endpoint(websocket: WebSocket):
         # Get conversation ID from query params
         conversation_id = websocket.query_params.get("conversation_id")
         if conversation_id:
-            conversation = app.state.storage.get_conversation(conversation_id)
+            conversation = websocket.app.state.storage.get_conversation(conversation_id)
             if not conversation:
                 await websocket.close(code=4000, reason="Conversation not found")
                 return
         else:
             # Create a new conversation if no ID provided
-            conversation = app.state.storage.create_conversation("New Conversation")
+            conversation = websocket.app.state.storage.create_conversation(
+                "New Conversation"
+            )
             conversation_id = conversation.id
 
         # Create the agent
         agent = VoiceToTextReactAgent(
-            tools=create_tools(app.state.vector_store),
+            tools=create_tools(websocket.app),
             instructions=INSTRUCTIONS,
+            model="gpt-4o-realtime-preview",
         )
 
         async def send_output_chunk(chunk: str):
@@ -144,10 +157,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     message = Message(
                         text=data["text"],
                         is_user=data["type"] == "user.input",
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(UTC),
                         data=None,
                     )
-                    app.state.storage.add_message(conversation_id, message)
+                    websocket.app.state.storage.add_message(conversation_id, message)
                 elif data["type"] == "function_call_output":
                     # Save function call output with data for charts/tables
                     try:
@@ -156,14 +169,16 @@ async def websocket_endpoint(websocket: WebSocket):
                             message = Message(
                                 text=data["output"],
                                 is_user=False,
-                                timestamp=datetime.utcnow(),
+                                timestamp=datetime.now(UTC),
                                 data={
                                     "sql": result["sql"],
                                     "data": result["data"],
                                     "chart_config": result.get("chart_config"),
                                 },
                             )
-                            app.state.storage.add_message(conversation_id, message)
+                            websocket.app.state.storage.add_message(
+                                conversation_id, message
+                            )
                     except json.JSONDecodeError:
                         pass
             except (json.JSONDecodeError, KeyError):
