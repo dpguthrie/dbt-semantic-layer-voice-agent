@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -101,3 +104,22 @@ class QueryParameters(BaseModel):
         default_factory=list
     )  # Format: "-metric_name" for desc, "metric_name" for asc
     where: list[str] = Field(default_factory=list)
+
+
+class Message(BaseModel):
+    """A message in a conversation."""
+
+    text: str
+    is_user: bool
+    timestamp: datetime
+    data: dict[str, Any] | None = None  # For storing JSON responses with charts/tables
+
+
+class Conversation(BaseModel):
+    """A conversation with messages."""
+
+    id: str
+    title: str
+    messages: list[Message]
+    created_at: datetime
+    updated_at: datetime
