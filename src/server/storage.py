@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 
 from server.models import Conversation, Message
 
@@ -18,7 +18,7 @@ class ConversationStorage:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS conversations (
-                    id TEXT PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     title TEXT NOT NULL,
                     created_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL
@@ -27,7 +27,7 @@ class ConversationStorage:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    conversation_id TEXT NOT NULL,
+                    conversation_id INTEGER NOT NULL,
                     text TEXT NOT NULL,
                     is_user BOOLEAN NOT NULL,
                     timestamp TIMESTAMP NOT NULL,
@@ -39,30 +39,26 @@ class ConversationStorage:
 
     def create_conversation(self, title: str) -> Conversation:
         """Create a new conversation."""
-        now = datetime.utcnow()
-        conversation = Conversation(
-            id=str(now.timestamp()),
-            title=title,
-            messages=[],
-            created_at=now,
-            updated_at=now,
-        )
+        now = datetime.now(UTC)
 
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (
-                    conversation.id,
-                    conversation.title,
-                    conversation.created_at,
-                    conversation.updated_at,
-                ),
+            cursor = conn.execute(
+                "INSERT INTO conversations (title, created_at, updated_at) VALUES (?, ?, ?) RETURNING id",
+                (title, now, now),
             )
-            conn.commit()
+            conversation_id = cursor.fetchone()[0]
+
+            conversation = Conversation(
+                id=conversation_id,
+                title=title,
+                messages=[],
+                created_at=now,
+                updated_at=now,
+            )
 
         return conversation
 
-    def get_conversation(self, conversation_id: str) -> Conversation | None:
+    def get_conversation(self, conversation_id: int) -> Conversation | None:
         """Get a conversation by ID."""
         with sqlite3.connect(self.db_path) as conn:
             # Get conversation
@@ -121,7 +117,7 @@ class ConversationStorage:
 
             return conversations
 
-    def add_message(self, conversation_id: str, message: Message) -> None:
+    def add_message(self, conversation_id: int, message: Message) -> None:
         """Add a message to a conversation."""
         with sqlite3.connect(self.db_path) as conn:
             # Add message
@@ -146,7 +142,7 @@ class ConversationStorage:
             )
             conn.commit()
 
-    def update_conversation_title(self, conversation_id: str, title: str) -> None:
+    def update_conversation_title(self, conversation_id: int, title: str) -> None:
         """Update a conversation's title."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
@@ -155,7 +151,19 @@ class ConversationStorage:
             )
             conn.commit()
 
-    def delete_conversation(self, conversation_id: str) -> None:
+    def clear_messages(self, conversation_id: int) -> None:
+        """Clear all messages from a conversation."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+            )
+            conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (datetime.utcnow(), conversation_id),
+            )
+            conn.commit()
+
+    def delete_conversation(self, conversation_id: int) -> None:
         """Delete a conversation and all its messages."""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(

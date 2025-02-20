@@ -118,7 +118,7 @@ class Message(BaseModel):
 class Conversation(BaseModel):
     """A conversation with messages."""
 
-    id: str
+    id: int
     title: str
     messages: list[Message]
     created_at: datetime

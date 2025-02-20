@@ -2,12 +2,12 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 
 import uvicorn
 from starlette.applications import Starlette
-from starlette.responses import HTMLResponse, JSONResponse
-from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.responses import HTMLResponse, Response
+from starlette.routing import Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
 
@@ -21,6 +21,16 @@ from server.utils import DateTimeEncoder, websocket_stream
 from server.vectorstore import SemanticLayerVectorStore
 
 logger = logging.getLogger(__name__)
+
+
+class JSONResponse(Response):
+    """Custom JSON response that handles datetime serialization."""
+
+    media_type = "application/json"
+
+    def render(self, content) -> bytes:
+        """Override render to handle datetime objects."""
+        return json.dumps(content, cls=DateTimeEncoder).encode("utf-8")
 
 
 @asynccontextmanager
@@ -70,159 +80,149 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
 
 async def list_conversations(request):
     """List all conversations."""
-    conversations = request.app.state.storage.list_conversations()
-    return JSONResponse(
-        json.loads(
-            json.dumps(
-                [conv.model_dump() for conv in conversations], cls=DateTimeEncoder
-            )
-        )
-    )
-
-
-async def get_conversation(request):
-    """Get a conversation by ID."""
-    conversation_id = request.path_params["conversation_id"]
-    conversation = request.app.state.storage.get_conversation(conversation_id)
-    if conversation:
-        return JSONResponse(
-            json.loads(json.dumps(conversation.model_dump(), cls=DateTimeEncoder))
-        )
-    return JSONResponse({"error": "Conversation not found"}, status_code=404)
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        conversations = storage.list_conversations()
+        return JSONResponse([conv.model_dump() for conv in conversations])
+    except Exception as e:
+        logger.error(f"Error listing conversations: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 async def create_conversation(request):
     """Create a new conversation."""
-    data = await request.json()
-    title = data.get("title", "New Conversation")
-    conversation = request.app.state.storage.create_conversation(title)
-    return JSONResponse(
-        json.loads(json.dumps(conversation.model_dump(), cls=DateTimeEncoder))
-    )
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        data = await request.json()
+        conversation = storage.create_conversation(title=data["title"])
+        return JSONResponse(conversation.model_dump())
+    except Exception as e:
+        logger.error(f"Error creating conversation: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
-async def update_conversation(request):
+async def get_conversation(request):
+    """Get a conversation by ID."""
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        conversation_id = int(request.path_params["conversation_id"])
+        conversation = storage.get_conversation(conversation_id)
+        if conversation is None:
+            return JSONResponse({"error": "Conversation not found"}, status_code=404)
+        return JSONResponse(conversation.model_dump())
+    except Exception as e:
+        logger.error(f"Error getting conversation: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def update_conversation_title(request):
     """Update a conversation's title."""
-    conversation_id = request.path_params["conversation_id"]
-    data = await request.json()
-    title = data.get("title")
-    if not title:
-        return JSONResponse({"error": "Title is required"}, status_code=400)
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        conversation_id = int(request.path_params["conversation_id"])
+        data = await request.json()
+        storage.update_conversation_title(conversation_id, title=data["title"])
+        return JSONResponse({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error updating conversation title: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-    request.app.state.storage.update_conversation_title(conversation_id, title)
-    return JSONResponse({"status": "success"})
+
+async def add_message(request):
+    """Add a message to a conversation."""
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        conversation_id = int(request.path_params["conversation_id"])
+        data = await request.json()
+        message = Message(
+            text=data["text"],
+            is_user=data["is_user"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            data=data.get("data"),
+        )
+        storage.add_message(conversation_id, message)
+        return JSONResponse({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error adding message: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def clear_messages(request):
+    """Clear all messages from a conversation."""
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        conversation_id = int(request.path_params["conversation_id"])
+        storage.clear_messages(conversation_id)
+        return JSONResponse({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error clearing messages: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 async def delete_conversation(request):
-    """Delete a conversation."""
-    conversation_id = request.path_params["conversation_id"]
-    request.app.state.storage.delete_conversation(conversation_id)
-    return JSONResponse({"status": "success"})
+    """Delete a conversation and all its messages."""
+    try:
+        storage: ConversationStorage = request.app.state.storage
+        conversation_id = int(request.path_params["conversation_id"])
+        storage.delete_conversation(conversation_id)
+        return JSONResponse({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error deleting conversation: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 async def websocket_endpoint(websocket: WebSocket):
-    """Handle WebSocket connections for real-time chat."""
     await websocket.accept()
 
-    try:
-        # Get conversation ID from query params
-        conversation_id = websocket.query_params.get("conversation_id")
-        if conversation_id:
-            conversation = websocket.app.state.storage.get_conversation(conversation_id)
-            if not conversation:
-                await websocket.close(code=4000, reason="Conversation not found")
-                return
-        else:
-            # Create a new conversation if no ID provided
-            conversation = websocket.app.state.storage.create_conversation(
-                "New Conversation"
-            )
-            conversation_id = conversation.id
+    browser_receive_stream = websocket_stream(websocket)
 
-        # Create the agent
-        agent = VoiceToTextReactAgent(
-            tools=create_tools(websocket.app),
-            instructions=INSTRUCTIONS,
-            model="gpt-4o-realtime-preview",
-        )
+    # Create tools with access to app state
+    tools = create_tools(websocket.app)
 
-        async def send_output_chunk(chunk: str):
-            """Send output chunk to WebSocket and save to storage."""
-            await websocket.send_text(chunk)
+    agent = VoiceToTextReactAgent(
+        model="gpt-4o-realtime-preview",
+        tools=tools,
+        instructions=INSTRUCTIONS,
+    )
 
-            # Parse the chunk and save to storage if it's a message
-            try:
-                data = json.loads(chunk)
-                if data["type"] in ["assistant.response", "user.input"]:
-                    message = Message(
-                        text=data["text"],
-                        is_user=data["type"] == "user.input",
-                        timestamp=datetime.now(UTC),
-                        data=None,
-                    )
-                    websocket.app.state.storage.add_message(conversation_id, message)
-                elif data["type"] == "function_call_output":
-                    # Save function call output with data for charts/tables
-                    try:
-                        result = json.loads(data["output"])
-                        if result.get("type") == "query_result":
-                            message = Message(
-                                text=data["output"],
-                                is_user=False,
-                                timestamp=datetime.now(UTC),
-                                data={
-                                    "sql": result["sql"],
-                                    "data": result["data"],
-                                    "chart_config": result.get("chart_config"),
-                                },
-                            )
-                            websocket.app.state.storage.add_message(
-                                conversation_id, message
-                            )
-                    except json.JSONDecodeError:
-                        pass
-            except (json.JSONDecodeError, KeyError):
-                pass
+    await agent.aconnect(browser_receive_stream, websocket.send_text)
 
-        # Connect the agent to the WebSocket stream
-        await agent.aconnect(
-            input_stream=websocket_stream(websocket),
-            send_output_chunk=send_output_chunk,
-        )
 
-    except Exception as e:
-        logger.exception("Error in WebSocket handler")
-        if not websocket.client_state.DISCONNECTED:
-            await websocket.close(code=1011, reason=str(e))
-    finally:
-        if not websocket.client_state.DISCONNECTED:
-            await websocket.close()
+async def homepage(_request):
+    with open("src/server/static/index.html") as f:
+        html = f.read()
+        return HTMLResponse(html)
 
 
 routes = [
-    Route("/api/conversations", endpoint=list_conversations, methods=["GET"]),
-    Route("/api/conversations", endpoint=create_conversation, methods=["POST"]),
+    Route("/", homepage),
+    WebSocketRoute("/ws", websocket_endpoint),
+    # Conversation management routes
+    Route("/api/conversations", list_conversations, methods=["GET"]),
+    Route("/api/conversations", create_conversation, methods=["POST"]),
     Route(
-        "/api/conversations/{conversation_id}",
-        endpoint=get_conversation,
-        methods=["GET"],
+        "/api/conversations/{conversation_id:int}", get_conversation, methods=["GET"]
     ),
     Route(
-        "/api/conversations/{conversation_id}",
-        endpoint=update_conversation,
+        "/api/conversations/{conversation_id:int}",
+        delete_conversation,
+        methods=["DELETE"],
+    ),
+    Route(
+        "/api/conversations/{conversation_id:int}/title",
+        update_conversation_title,
         methods=["PUT"],
     ),
     Route(
-        "/api/conversations/{conversation_id}",
-        endpoint=delete_conversation,
+        "/api/conversations/{conversation_id:int}/messages",
+        add_message,
+        methods=["POST"],
+    ),
+    Route(
+        "/api/conversations/{conversation_id:int}/messages",
+        clear_messages,
         methods=["DELETE"],
     ),
-    WebSocketRoute("/ws", endpoint=websocket_endpoint),
-    Route(
-        "/",
-        endpoint=lambda r: HTMLResponse(open("src/server/static/index.html").read()),
-    ),
-    Mount("/static", StaticFiles(directory="src/server/static"), name="static"),
 ]
 
 app = Starlette(
@@ -231,5 +231,12 @@ app = Starlette(
     lifespan=lifespan,
 )
 
+app.mount("/", StaticFiles(directory="src/server/static"), name="static")
+
 if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     uvicorn.run(app, host="0.0.0.0", port=3000)
