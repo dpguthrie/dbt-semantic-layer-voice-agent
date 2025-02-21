@@ -19,13 +19,14 @@
         integrity="sha256-bDgRIzo3i6VHqJMlDwUcu/g1mnxCoS6B1sNW3269kJY=" crossorigin="anonymous"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
             margin: 0;
             padding: 0;
             height: 100vh;
-            background-color: #f0f0f0;
+            background-color: #0F172A;  /* Dark blue background from image */
             display: flex;
             flex-direction: column;
+            color: #E2E8F0;  /* Light gray text for better contrast */
         }
 
         .chat-container {
@@ -33,47 +34,44 @@
             display: flex;
             flex-direction: column;
             max-width: 1200px;
-            /* Increased from 800px */
             margin: 0 auto;
             width: 100%;
-            background: white;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background: #0F172A;  /* Match body background */
             position: relative;
         }
 
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            padding: 40px;
             padding-bottom: 80px;
-            /* Add padding to prevent messages from being hidden behind controls */
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 16px;  /* Increased gap between messages */
         }
 
         .message {
-            max-width: 85%;
-            /* Increased from 70% */
-            padding: 10px 15px;
-            border-radius: 15px;
+            max-width: 65%;
+            padding: 16px;  /* Increased padding */
+            border-radius: 12px;  /* Slightly rounded corners */
             margin: 5px 0;
+            line-height: 1.5;  /* Better readability */
+            font-size: 15px;  /* Slightly larger font */
         }
 
         .message pre {
             position: relative;
-            background-color: #f8f9fa;
-            padding: 1em 0.5em 1em 3.8em !important;
-            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             overflow-x: auto;
-            margin: 5px 0;
             counter-reset: line;
-            line-height: 1.5;
         }
 
         .message pre code {
-            font-family: 'Courier New', Courier, monospace;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
             display: block;
+            color: #d4d4d4;
+            line-height: 1.5;
+            font-size: 14px;
         }
 
         .message pre code .line {
@@ -88,9 +86,9 @@
             left: -3.3em;
             width: 2.5em;
             text-align: right;
-            color: #999;
-            padding-right: 0.5em;
-            border-right: 1px solid #ddd;
+            color: #6e7681;
+            padding-right: 1em;
+            border-right: 1px solid #404040;
             user-select: none;
         }
 
@@ -99,35 +97,34 @@
         }
 
         .user-message {
-            background-color: #007bff;
-            color: white;
+            background-color: #5EEAD4;  /* Teal accent color from image */
+            color: #0F172A;  /* Dark text for contrast */
             align-self: flex-end;
-            border-bottom-right-radius: 5px;
+            border-bottom-right-radius: 4px;
         }
 
         .assistant-message {
-            background-color: #e9ecef;
-            color: black;
+            background-color: #1E293B;  /* Lighter blue from image */
+            color: #E2E8F0;  /* Light gray text */
             align-self: flex-start;
-            border-bottom-left-radius: 5px;
+            border-bottom-left-radius: 4px;
         }
 
         /* Tabs styling */
         .tabs {
             display: flex;
             gap: 24px;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #dee2e6;
-            padding-bottom: 0;
+            border-bottom: 1px solid #2D3748;  /* Darker border to match theme */
+            padding-bottom: 20px;
         }
 
         .tab {
             padding: 8px 4px;
             background: none;
             border: none;
-            color: #6c757d;
+            color: #94A3B8;  /* Lighter gray for inactive tabs */
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.2s;
             position: relative;
             font-weight: 500;
             font-size: 14px;
@@ -140,63 +137,115 @@
             left: 0;
             width: 100%;
             height: 2px;
-            background-color: #007bff;
+            background-color: #5EEAD4;  /* Changed to teal accent */
             transform: scaleX(0);
-            transition: transform 0.3s;
+            transition: transform 0.2s;
         }
 
         .tab:hover {
-            color: #495057;
+            color: #E2E8F0;  /* Lighter color on hover */
         }
 
         .tab.active {
-            color: #007bff;
+            color: #5EEAD4;  /* Teal accent for active tab */
         }
 
         .tab.active::after {
             transform: scaleX(1);
         }
 
+        .message p {
+            margin: 0;
+        }
+
         .tab-content {
             display: none;
-            padding: 20px 0;
+            border: 1px solid #2d2d2d;
+            margin-top: -1px;
+            max-height: 500px;  /* Add max height */
+            overflow-y: auto;   /* Enable vertical scrolling */
+            background-color: #1E293B;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3),  /* Deeper outer shadow */
+                       0 8px 16px rgba(0, 0, 0, 0.2),   /* Mid-level shadow */
+                       0 2px 4px rgba(0, 0, 0, 0.1);    /* Subtle inner shadow */
+            margin: 16px 0;  /* Add some vertical spacing */
+            border: 1px solid #2D3748;  /* Subtle border */
         }
 
         .tab-content.active {
             display: block;
+            width: 100%;
+            min-width: 600px;
+            overflow-x: auto;
         }
 
-        /* Table styling */
-        .data-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 10px 0;
-        }
 
         .data-table th,
         .data-table td {
-            border: 1px solid #dee2e6;
-            padding: 8px;
-            text-align: left;
+            padding: 12px 16px;
+            color: #E2E8F0;
+            border-bottom: 1px solid #2D3748;
+            border-right: 1px solid #2D3748;
+            font-size: 14px;
+            line-height: 1.5;
         }
 
         .data-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
+            background-color: #233047;  /* Slightly darker than table background */
+            font-weight: 500;  /* Slightly lighter weight */
+            text-transform: none;  /* Remove uppercase */
+            font-size: 14px;  /* Same as content */
+            letter-spacing: 0.01em;  /* Reduced letter spacing */
+            color: #94A3B8;  /* Softer color for headers */
+            white-space: nowrap;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 1;
         }
 
-        .data-table tr:nth-child(even) {
-            background-color: #f8f9fa;
+        .data-table tbody tr {
+            transition: background-color 0.2s ease;
+            border-left: 2px solid transparent;
+        }
+
+        .data-table tbody tr:nth-child(even) {
+            background-color: #1c2538;  /* Very subtle difference */
+        }
+
+        .data-table tbody tr:hover {
+            background-color: #233047;  /* Same as header for consistency */
+            border-left: 2px solid #94A3B8;  /* More subtle indicator */
+        }
+
+        /* Style for metric values (right-aligned cells) */
+        .data-table td[style*="text-align: right"] {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            color: #94A3B8;  /* More subtle accent */
+            padding-right: 24px;
+        }
+
+        /* Remove border from last column */
+        .data-table th:last-child,
+        .data-table td:last-child {
+            border-right: none;
+        }
+
+        /* Remove border from last row */
+        .data-table tbody tr:last-child td {
+            border-bottom: none;
         }
 
         .controls {
             padding: 20px;
-            background: white;
-            border-top: 1px solid #dee2e6;
+            background: #1E293B;  /* Lighter blue background */
+            border-top: 1px solid #2D3748;  /* Subtle border */
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 10px;
+            gap: 16px;
             position: sticky;
             bottom: 0;
             z-index: 100;
@@ -204,59 +253,50 @@
 
         #toggleAudio,
         #clearChat {
-            font-size: 16px;
+            font-size: 15px;
             padding: 12px 24px;
             cursor: pointer;
             border: none;
-            border-radius: 25px;
-            transition: all 0.3s ease;
+            border-radius: 8px;
+            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: 500;
+            background-color: #5EEAD4;  /* Teal accent color */
+            color: #0F172A;  /* Dark text */
         }
 
         #clearChat {
-            background-color: #6c757d;
-            color: white;
+            background-color: transparent;  /* Remove background */
+            color: #EF4444;  /* Red for delete/clear actions */
+            border: none;
+            transition: all 0.2s;
         }
 
         #clearChat:hover {
-            background-color: #5a6268;
+            background-color: rgba(239, 68, 68, 0.1);  /* Subtle red background on hover */
         }
 
-        #toggleAudio {
-            background-color: #dc3545;
-            color: white;
+        #clearChat svg {
+            stroke: #EF4444;  /* Make the icon red too */
+        }
+
+        #toggleAudio:hover {
+            background-color: #2DD4BF;  /* Slightly darker on hover */
         }
 
         #toggleAudio.recording {
-            background-color: #dc3545;
-            animation: pulse 1.5s infinite;
-        }
-
-        #toggleAudio:not(.recording) {
-            background-color: #0d6efd;
-        }
-
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-            }
-
-            50% {
-                transform: scale(1.05);
-            }
-
-            100% {
-                transform: scale(1);
-            }
+            background-color: #EF4444;  /* Red for recording state */
+            color: white;
         }
 
         .loading {
             display: none;
             align-items: center;
             gap: 8px;
-            color: #6c757d;
+            color: #94A3B8;  /* Muted text color */
+            font-size: 14px;
         }
 
         .loading.active {
@@ -269,9 +309,9 @@
         }
 
         .dot {
-            width: 8px;
-            height: 8px;
-            background-color: #6c757d;
+            width: 6px;
+            height: 6px;
+            background-color: #5EEAD4;  /* Teal dots */
             border-radius: 50%;
             animation: bounce 1.4s infinite ease-in-out;
         }
@@ -285,7 +325,6 @@
         }
 
         @keyframes bounce {
-
             0%,
             80%,
             100% {
@@ -300,40 +339,50 @@
         /* Copy button styling */
         .copy-button {
             position: absolute;
-            top: 5px;
-            right: 5px;
-            padding: 5px 10px;
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 3px;
+            top: 8px;
+            right: 8px;
+            padding: 6px;
+            background: #233047;  /* Match the header background */
+            color: #94A3B8;  /* Match the muted text color */
+            border: 1px solid #2D3748;  /* Match other borders */
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
-            opacity: 0.8;
-            transition: opacity 0.2s;
+            opacity: 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
         }
 
-        .copy-button:hover {
+        .message pre:hover .copy-button {
             opacity: 1;
         }
 
+        .copy-button:hover {
+            background: #2D3748;
+            color: #5EEAD4;  /* Use accent color on hover */
+            border-color: #5EEAD4;  /* Use accent color for border */
+        }
+
         .copy-button.copied {
-            background: #28a745;
-            color: white;
-            border-color: #28a745;
+            background: #5EEAD4;  /* Use accent color for success state */
+            color: #0F172A;  /* Dark text for contrast */
+            border-color: #5EEAD4;
         }
 
         /* Chart container styling */
         .chart-container {
-            width: 100%;
-            min-width: 500px;
-            /* Add minimum width */
+            width: 800px;
             height: 400px;
             position: relative;
-            margin-top: 10px;
             overflow-x: auto;
-            /* Allow horizontal scrolling if needed */
             padding: 20px;
-            /* Add padding around the chart */
+            background-color: #1E293B;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         /* Make sure the canvas respects the container size */
@@ -341,17 +390,25 @@
             width: 100% !important;
             height: 100% !important;
             min-width: 600px;
-            /* Match container min-width */
         }
 
-        /* Ensure tab content maintains width */
-        .tab-content.active {
-            display: block;
+        /* Make the table header sticky within the scrollable container */
+        .data-table thead th {
+            background: #0F172A;  /* Match header background */
+            border-bottom: 2px solid #404040;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        /* Ensure proper table layout within scrollable container */
+        .data-table {
             width: 100%;
-            min-width: 600px;
-            /* Match container min-width */
-            overflow-x: auto;
-            /* Allow horizontal scrolling if needed */
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
         }
 
         /* Add styles for conversation management */
@@ -361,31 +418,32 @@
         }
 
         .sidebar {
-            width: 260px;
-            background-color: #202123;
-            color: white;
-            padding: 10px;
+            width: 280px;
+            background-color: #1E293B;  /* Lighter blue background */
+            color: #E2E8F0;
+            padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 16px;
         }
 
         .new-chat-button {
-            background-color: #343541;
-            color: white;
-            border: 1px solid #565869;
-            border-radius: 5px;
-            padding: 10px;
+            background-color: #5EEAD4;  /* Teal accent */
+            color: #0F172A;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 8px;
             width: 100%;
-            transition: background-color 0.3s;
+            font-weight: 500;
+            transition: background-color 0.2s;
         }
 
         .new-chat-button:hover {
-            background-color: #40414f;
+            background-color: #2DD4BF;
         }
 
         .conversation-list {
@@ -397,23 +455,23 @@
         }
 
         .conversation-item {
-            padding: 10px;
-            border-radius: 5px;
+            padding: 12px;
+            border-radius: 8px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 8px;
-            color: #ececf1;
-            transition: background-color 0.3s;
-            position: relative;  /* For delete button positioning */
+            gap: 12px;
+            color: #E2E8F0;
+            transition: background-color 0.2s;
+            position: relative;
         }
 
         .conversation-item:hover {
-            background-color: #343541;
+            background-color: #334155;
         }
 
         .conversation-item.active {
-            background-color: #343541;
+            background-color: #334155;
         }
 
         .conversation-title {
@@ -426,13 +484,9 @@
 
         .delete-conversation {
             opacity: 0;
-            position: absolute;
-            right: 8px;
-            top: 50%;
-            transform: translateY(-50%);
             background: none;
             border: none;
-            color: #ed4245;
+            color: #EF4444;  /* Red for delete */
             cursor: pointer;
             padding: 4px;
             border-radius: 4px;
@@ -447,21 +501,21 @@
         }
 
         .delete-conversation:hover {
-            background-color: rgba(237, 66, 69, 0.1);
+            background-color: rgba(239, 68, 68, 0.1);
         }
 
         .conversation-title-input {
             background: transparent;
             border: none;
-            color: white;
+            color: #E2E8F0;
             font-size: 14px;
             width: 100%;
-            padding: 0;
+            padding: 4px;
         }
 
         .conversation-title-input:focus {
             outline: none;
-            border-bottom: 1px solid #565869;
+            border-bottom: 1px solid #5EEAD4;
         }
 
         .chat-container {
@@ -470,8 +524,46 @@
             flex-direction: column;
             max-width: none;
             margin: 0;
-            background: white;
+            background: #0F172A;  /* Changed from white to match dark theme */
             position: relative;
+        }
+
+        /* Override highlight.js theme for SQL */
+        .hljs {
+            background: #1E293B !important;
+            color: #d4d4d4 !important;
+        }
+
+        .hljs-keyword {
+            color: #569cd6 !important;
+        }
+
+        .hljs-string {
+            color: #ce9178 !important;
+        }
+
+        .hljs-number {
+            color: #b5cea8 !important;
+        }
+
+        .hljs-built_in {
+            color: #4ec9b0 !important;
+        }
+
+        .hljs-type {
+            color: #4ec9b0 !important;
+        }
+
+        .hljs-literal {
+            color: #569cd6 !important;
+        }
+
+        .hljs-comment {
+            color: #6a9955 !important;
+        }
+
+        .hljs-operator {
+            color: #d4d4d4 !important;
         }
     </style>
 </head>
@@ -572,6 +664,11 @@
         const deleteModal = new bootstrap.Modal(document.getElementById('deleteConversationModal'));
         const clearModal = new bootstrap.Modal(document.getElementById('clearChatModal'));
         let conversationToDelete = null;
+
+        // Initialize Chart.js defaults for dark theme
+        Chart.defaults.color = '#d4d4d4';
+        Chart.defaults.borderColor = '#2d2d2d';
+        Chart.defaults.backgroundColor = '#252526';
 
         // Create audio context
         const BUFFER_SIZE = 4800;
@@ -743,9 +840,17 @@
                     item.remove();
                 }
                 
-                // If this was the active conversation, create a new one
+                // If this was the active conversation, try to switch to another one
                 if (currentConversationId === conversationToDelete) {
-                    createNewConversation();
+                    // Find the first remaining conversation
+                    const remainingConversation = document.querySelector('.conversation-item');
+                    if (remainingConversation) {
+                        // Switch to the first remaining conversation
+                        switchToConversation(remainingConversation.dataset.id);
+                    } else {
+                        // Only create a new conversation if there are none left
+                        createNewConversation();
+                    }
                 }
             } catch (error) {
                 console.error('Error deleting conversation:', error);
@@ -931,7 +1036,7 @@
                     sqlTab.className = 'tab';
                     sqlTab.textContent = 'SQL';
 
-                    // Add tabs in new order
+                    // Add tabs in appropriate order
                     tabsContainer.appendChild(chartTab);
                     tabsContainer.appendChild(dataTab);
                     tabsContainer.appendChild(sqlTab);
@@ -1002,13 +1107,28 @@
                     // Add copy button
                     const copyButton = document.createElement('button');
                     copyButton.className = 'copy-button';
-                    copyButton.textContent = 'Copy SQL';
+                    copyButton.innerHTML = `
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    `;
+                    copyButton.title = "Copy SQL";
                     copyButton.onclick = () => {
                         navigator.clipboard.writeText(data.sql).then(() => {
-                            copyButton.textContent = 'Copied!';
+                            copyButton.innerHTML = `
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 6L9 17l-5-5"></path>
+                                </svg>
+                            `;
                             copyButton.classList.add('copied');
                             setTimeout(() => {
-                                copyButton.textContent = 'Copy SQL';
+                                copyButton.innerHTML = `
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                `;
                                 copyButton.classList.remove('copied');
                             }, 2000);
                         });
@@ -1467,6 +1587,8 @@
                 console.error('Error stopping audio:', error);
             } finally {
                 ws = null;
+                // Remove the loading indicator
+                document.getElementById('loadingIndicator').classList.remove('active');
             }
         }
 
