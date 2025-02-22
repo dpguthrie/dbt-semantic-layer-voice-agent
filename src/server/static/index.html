@@ -15,8 +15,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
     <!-- Add Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@4.1.0/cdn.min.js"
-        integrity="sha256-bDgRIzo3i6VHqJMlDwUcu/g1mnxCoS6B1sNW3269kJY=" crossorigin="anonymous"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
@@ -51,7 +51,7 @@
         }
 
         .message {
-            max-width: 65%;
+            max-width: 85%;
             padding: 16px;  /* Increased padding */
             border-radius: 12px;  /* Slightly rounded corners */
             margin: 5px 0;
@@ -221,10 +221,7 @@
 
         /* Style for metric values (right-aligned cells) */
         .data-table td[style*="text-align: right"] {
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 14px;
-            color: #94A3B8;  /* More subtle accent */
-            padding-right: 24px;
+            text-align: right;
         }
 
         /* Remove border from last column */
@@ -1016,6 +1013,7 @@
             try {
                 // Try to parse as JSON in case it's a query result
                 const data = JSON.parse(text);
+                console.log('data', data);
                 if (data.sql && data.data) {
                     // Create tabs container
                     const tabsContainer = document.createElement('div');
@@ -1062,16 +1060,16 @@
                                 ...data.chart_config.options,
                                 maintainAspectRatio: false,
                                 responsive: true,
-                                scales: {
-                                    ...data.chart_config.options.scales,
-                                    x: {
-                                        type: 'category',  // Use category instead of time
-                                        display: true,
-                                        title: {
-                                            display: true
-                                        }
-                                    }
-                                },
+                                // scales: {
+                                //     ...data.chart_config.options.scales,
+                                //     x: {
+                                //         type: 'category',  // Use category instead of time
+                                //         display: true,
+                                //         title: {
+                                //             display: true
+                                //         }
+                                //     }
+                                // },
                                 layout: {
                                     padding: {
                                         top: 20,
@@ -1151,10 +1149,12 @@
                         if (isNaN(num)) {
                             return value;
                         }
-                        return `$${num.toLocaleString('en-US', {
+                        // Format with commas and no decimal places for better readability
+                        return num.toLocaleString('en-US', {
                             minimumFractionDigits: 0,
-                            maximumFractionDigits: 0
-                        })}`;
+                            maximumFractionDigits: 0,
+                            useGrouping: true
+                        });
                     };
 
                     // Add headers
@@ -1169,12 +1169,12 @@
                     thead.appendChild(headerRow);
                     table.appendChild(thead);
 
-                    // Create set of metric names for easy lookup
-                    const metricSet = new Set(data.metrics?.map(m => m.toUpperCase()) || []);
+                    const upperMetrics = data.metrics ? data.metrics.map(m => m.toUpperCase()) : [];
 
                     // Add data rows
                     const tbody = document.createElement('tbody');
                     const rowCount = data.data[headers[0]].length;
+
                     for (let i = 0; i < rowCount; i++) {
                         const row = document.createElement('tr');
                         headers.forEach(header => {
@@ -1182,7 +1182,7 @@
                             const value = data.data[header][i];
 
                             // Format if this is a metric column
-                            if (metricSet.has(header)) {
+                            if (upperMetrics && upperMetrics.includes(header)) {
                                 td.textContent = formatNumber(value);
                                 td.style.textAlign = 'right';
                             } else {
@@ -1356,8 +1356,10 @@
                                         const outputText = JSON.stringify({
                                             sql: result.sql,
                                             data: result.data,
-                                            chart_config: result.chart_config
+                                            chart_config: result.chart_config,
+                                            metrics: result.metrics,
                                         });
+                                        console.log('outputText', outputText);
                                         addMessage(outputText, false);
                                         // Save message to conversation
                                         if (currentConversationId) {

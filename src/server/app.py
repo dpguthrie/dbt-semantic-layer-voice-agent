@@ -64,18 +64,29 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
         raise
     finally:
         logger.info("Cleaning up application state...")
+        # Clean up vector store
         if hasattr(app.state, "vector_store"):
             try:
-                app.state.vector_store.metric_store.delete_collection()
-                app.state.vector_store.dimension_store.delete_collection()
+                # Ensure we await any async cleanup
+                if app.state.vector_store.metric_store:
+                    await app.state.vector_store.metric_store.delete()
+                if app.state.vector_store.dimension_store:
+                    await app.state.vector_store.dimension_store.delete()
                 app.state.vector_store = None
                 logger.info("Vector store cleanup completed")
             except Exception as e:
                 logger.error(f"Error cleaning up vector store: {e}")
 
+        # Clean up client
         if hasattr(app.state, "client"):
-            app.state.client = None
-            logger.info("Semantic Layer client cleanup completed")
+            try:
+                await app.state.client.close()
+                app.state.client = None
+                logger.info("Semantic Layer client cleanup completed")
+            except Exception as e:
+                logger.error(f"Error cleaning up client: {e}")
+
+        logger.info("Application cleanup completed")
 
 
 async def list_conversations(request):
