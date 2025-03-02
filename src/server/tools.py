@@ -81,6 +81,8 @@ class SemanticLayerQueryTool(BaseTool):
     - where (optional): List of filter conditions using TimeDimension() or Dimension() templates
     - order_by (optional): List of ordering specs for metrics or dimensions
     - limit (optional): Number of results to return
+
+    Do not make up metrics or dimensions, only use those returned by the semantic_layer_metadata tool.
     """
     args_schema: type[BaseModel] = QueryParameters
     app: Starlette
@@ -180,8 +182,6 @@ class SemanticLayerQueryTool(BaseTool):
             data_dict = table.to_pydict()
             formatted_data = self._format_data(data_dict)
 
-            print("chart_js_config", chart_js_config)
-
             # Format the response for the frontend - ensure it's wrapped correctly for direct return
             return {
                 "type": "function_call_output",  # This matches what the frontend expects
@@ -191,7 +191,15 @@ class SemanticLayerQueryTool(BaseTool):
                         "sql": sql,
                         "data": formatted_data,
                         "chart_config": chart_js_config,
+                        # TODO: Remove this once we're handling metrics in the frontend via query
                         "metrics": metrics,
+                        "query": QueryParameters(
+                            metrics=metrics,
+                            group_by=group_by or [],
+                            limit=limit,
+                            order_by=order_by or [],
+                            where=where or [],
+                        ).model_dump(),
                     }
                 ),
             }

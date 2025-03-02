@@ -109,10 +109,12 @@ class QueryParameters(BaseModel):
 class Message(BaseModel):
     """A message in a conversation."""
 
+    id: int | None = None
     text: str
     is_user: bool
     timestamp: datetime
     data: dict[str, Any] | None = None  # For storing JSON responses with charts/tables
+    conversation_id: int  # ID of the conversation this message belongs to
 
 
 class Conversation(BaseModel):
@@ -121,5 +123,9 @@ class Conversation(BaseModel):
     id: int
     title: str
     messages: list[Message]
+    context: str | None = Field(
+        None,
+        description="Optional text context that applies to all messages in the conversation (e.g., date ranges, filters)",
+    )
     created_at: datetime
     updated_at: datetime

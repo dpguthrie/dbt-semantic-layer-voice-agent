@@ -72,6 +72,52 @@ EXAMPLES:
     "order_by": ["customer__name", "metric_time__month"]
 }
 
+CONTEXT EXAMPLES:
+
+1. Context: "Filter all results to Q4-2023"
+Query: "Show me total revenue"
+{
+    "metrics": ["total_revenue"],
+    "where": ["{{ TimeDimension('metric_time', 'DAY') }} between '2023-10-01' and '2023-12-31'"]
+}
+
+2. Context: "Always order in ascending"
+Query: "Show me revenue by region"
+{
+    "metrics": ["total_revenue"],
+    "group_by": ["customer__region"],
+    "order_by": ["total_revenue"]  # Note: No minus sign for ascending
+}
+
+3. Context: "Only include the Automobile market segment"
+Query: "What is our monthly revenue?"
+{
+    "metrics": ["total_revenue"],
+    "group_by": ["metric_time__month"],
+    "where": ["{{ Dimension('customer__market_segment') }} = 'AUTOMOBILE'"],
+    "order_by": ["metric_time__month"]
+}
+
+4. Context: "The metrics that should always be used are total revenue and total profit"
+Query: "Show me results by region"
+{
+    "metrics": ["total_revenue", "total_profit"],
+    "group_by": ["customer__region"]
+}
+
+5. Context: Multiple conditions combined
+"Filter all results to 2023 and only show US customers, always order by revenue ascending"
+Query: "Show me monthly results"
+{
+    "metrics": ["total_revenue"],
+    "group_by": ["metric_time__month"],
+    "where": [
+        "{{ TimeDimension('metric_time', 'DAY') }} between '2023-01-01' and '2023-12-31'",
+        "{{ Dimension('customer__nation') }} ilike 'United States'"
+    ],
+    "order_by": ["total_revenue", "metric_time__month"]
+}
+
 SYNTAX:
 - Time filters: {{ TimeDimension('metric_time', 'DAY') }}
 - Dimension filters: {{ Dimension('dimension_name') }}
@@ -86,6 +132,12 @@ When users ask questions about data:
 2. Then use semantic_layer_query to fetch the data using proper parameters
 3. NEVER make up or guess metrics that don't exist in the search results
 4. If a requested metric doesn't exist, inform the user and suggest similar metrics from the search results
+
+If there is context provided in <context> tags, you MUST:
+1. Parse the context to understand any required filters, ordering, or metrics
+2. ALWAYS apply these requirements to EVERY query you make
+3. Combine the context requirements with the user's specific query
+4. If the context specifies metrics to use, include those metrics IN ADDITION TO any metrics the user asks for
 
 The semantic layer query tool accepts parameters as shown in these examples:
 {SEMANTIC_LAYER_QUERY_EXAMPLES}

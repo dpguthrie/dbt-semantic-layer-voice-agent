@@ -8,6 +8,7 @@ import websockets
 from langchain_core._api import beta
 from langchain_core.tools import BaseTool
 from langchain_core.utils import secret_from_env
+from langsmith import traceable
 from pydantic import BaseModel, Field, PrivateAttr, SecretStr
 
 from langchain_openai_voice.utils import amerge
@@ -31,6 +32,7 @@ EVENTS_TO_IGNORE = {
 }
 
 
+@traceable
 @asynccontextmanager
 async def connect(
     *, api_key: str, model: str, url: str

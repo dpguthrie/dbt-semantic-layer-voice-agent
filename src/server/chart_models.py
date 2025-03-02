@@ -7,7 +7,6 @@ import pandas as pd
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict
 
-# Re-using color constants from original implementation
 COLORS = [
     (94, 234, 212),
     (94, 186, 234),
@@ -34,7 +33,6 @@ CHART_STANDARD_OPTIONS = {
 class ChartType(Enum):
     BAR = "bar"
     LINE = "line"
-    DOUGHNUT = "doughnut"
     STACKED_BAR = "stacked_bar"
 
 
@@ -48,9 +46,9 @@ def get_rgb(idx: int) -> tuple[int, int, int]:
         return COLORS[idx % len(COLORS)]
     except IndexError:
         return (
-            np.random.randint(50, 150),
-            np.random.randint(75, 255),
-            np.random.randint(75, 255),
+            np.random.randint(0, 255),
+            np.random.randint(0, 255),
+            np.random.randint(0, 255),
         )
 
 
@@ -105,9 +103,19 @@ class BaseChart(BaseModel, ABC):
     def get_labels(self) -> tuple[str | None, list[Any]]:
         """Get x-axis labels and values"""
         if self.has_time_dimension:
-            time_values = self.table.column(self.time_dimension).to_pylist()
+            time_values = self.table.column(self.time_dimension).unique().to_pylist()
+            # Convert to UTC timestamps in milliseconds with consistent timezone handling
             time_ms = sorted(
-                [int(pd.Timestamp(dt).timestamp() * 1000) for dt in time_values]
+                [
+                    int(
+                        pd.to_datetime(dt)
+                        .tz_localize(None)  # Remove timezone if present
+                        .tz_localize("UTC")  # Set to UTC
+                        .timestamp()
+                        * 1000
+                    )
+                    for dt in time_values
+                ]
             )
             return self.time_dimension, time_ms
 
@@ -116,12 +124,16 @@ class BaseChart(BaseModel, ABC):
 
         if len(self.dimensions) == 1:
             dim = self.dimensions[0]
-            return dim, self.table.column(dim).to_pylist()
+            # Ensure unique values for dimension
+            return dim, self.table.column(dim).unique().to_pylist()
 
         # Find dimension with least unique values for x-axis
         dims = {dim: self.number_of_unique_values_for(dim) for dim in self.dimensions}
         least_unique_dim = min(dims.keys(), key=dims.get)
-        return least_unique_dim, self.table.column(least_unique_dim).to_pylist()
+        # Ensure unique values for chosen dimension
+        return least_unique_dim, self.table.column(
+            least_unique_dim
+        ).unique().to_pylist()
 
     def get_config(self) -> dict:
         """Generate chart configuration"""
@@ -148,15 +160,18 @@ class TimeSeriesChart(BaseChart):
     """Chart specialized for time series data"""
 
     def prepare_data(self) -> pd.DataFrame:
-        df = self.table.to_pandas()
+        df = self.table.to_pandas().sort_values(by=self.time_dimension)
 
-        # Sort by time dimension in ascending order
-        df = df.sort_values(by=self.time_dimension)
-
-        # Convert to milliseconds for JavaScript
+        # Convert time dimension to UTC timestamps in milliseconds for JavaScript
+        # Explicitly handle timezone by removing any timezone info and then setting to UTC
         df[self.time_dimension] = (
-            pd.to_datetime(df[self.time_dimension]).astype(np.int64) / 1e6
+            pd.to_datetime(df[self.time_dimension])
+            .dt.tz_localize(None)  # Remove timezone if present
+            .dt.tz_localize("UTC")  # Set to UTC
+            .astype(np.int64)
+            // 1_000_000  # Convert nanoseconds to milliseconds
         )
+
         df[self.metrics] = df[self.metrics].astype(np.float64)
 
         # Use wide format if we have multiple dimensions
@@ -164,6 +179,8 @@ class TimeSeriesChart(BaseChart):
             index = self.time_dimension
             columns = [d for d in self.dimensions if d != index]
             df = df.pivot(index=index, columns=columns, values=self.metrics)
+
+        df.fillna(0, inplace=True)
 
         return df
 
@@ -199,44 +216,7 @@ class TimeSeriesChart(BaseChart):
 
     @property
     def color_strategy(self) -> ColorStrategy:
-        return (
-            ColorStrategy.SEPARATE
-            if len(self.metrics) > 1 or len(self.dimensions) > 1
-            else ColorStrategy.SINGLE
-        )
-
-
-class DoughnutChart(BaseChart):
-    """Specialized chart for categorical data with few unique values"""
-
-    def prepare_data(self) -> pd.DataFrame:
-        df = self.table.to_pandas()
-        df[self.metrics] = df[self.metrics].astype(np.float64)
-        return df
-
-    def create_datasets(self, df: pd.DataFrame, x_axis_label: str) -> list[dict]:
-        return [
-            {
-                "label": metric.replace("_", " ").title(),
-                "data": df[metric].tolist(),
-            }
-            for metric in self.metrics
-        ]
-
-    def apply_colors(self, datasets: list[dict]) -> None:
-        for dataset in datasets:
-            colors = [
-                f"rgb({r}, {g}, {b})"
-                for r, g, b in (get_rgb(i) for i in range(len(dataset["data"])))
-            ]
-            dataset["backgroundColor"] = colors
-
-    @property
-    def chart_type(self) -> ChartType:
-        return ChartType.DOUGHNUT
-
-    @property
-    def color_strategy(self) -> ColorStrategy:
+        # Always use one color per dataset
         return ColorStrategy.SEPARATE
 
 
@@ -248,7 +228,9 @@ class StackedBarChart(BaseChart):
         df[self.metrics] = df[self.metrics].astype(np.float64)
         x_axis_label, _ = self.get_labels()
         columns = [d for d in self.dimensions if d != x_axis_label]
-        return df.pivot(index=x_axis_label, columns=columns, values=self.metrics)
+        df = df.pivot(index=x_axis_label, columns=columns, values=self.metrics)
+        df.fillna(0, inplace=True)
+        return df
 
     def create_datasets(self, df: pd.DataFrame, x_axis_label: str) -> list[dict]:
         datasets = []
@@ -298,6 +280,8 @@ class BarChart(BaseChart):
             columns = [d for d in self.dimensions if d != x_axis_label]
             df = df.pivot(index=x_axis_label, columns=columns, values=self.metrics)
 
+        df.fillna(0, inplace=True)
+
         return df
 
     def create_datasets(self, df: pd.DataFrame, x_axis_label: str) -> list[dict]:
@@ -330,7 +314,7 @@ class BarChart(BaseChart):
         return datasets
 
     def apply_colors(self, datasets: list[dict]) -> None:
-        # For tables with only metrics, always use separate colors
+        # Always use separate colors for metrics-only tables
         if len(self.metrics) == len(self.table.schema):
             values = len(self.metrics)
             colors = [
@@ -341,19 +325,10 @@ class BarChart(BaseChart):
             datasets[0]["borderWidth"] = 1
             return
 
-        # Regular color handling
-        if len(datasets) == 1 and self.color_strategy == ColorStrategy.SEPARATE:
-            # For single dataset with separate colors, each bar gets its own color
-            values = len(datasets[0]["data"])
-            colors = [
-                f"rgb({r}, {g}, {b})" for r, g, b in (get_rgb(i) for i in range(values))
-            ]
-            datasets[0]["backgroundColor"] = colors
-        else:
-            # For multiple datasets or single color strategy, each dataset gets one color
-            for i, dataset in enumerate(datasets):
-                r, g, b = get_rgb(i)
-                dataset["backgroundColor"] = f"rgb({r}, {g}, {b})"
+        # Always use one color per dataset
+        for i, dataset in enumerate(datasets):
+            r, g, b = get_rgb(i)
+            dataset["backgroundColor"] = f"rgb({r}, {g}, {b})"
 
     @property
     def chart_type(self) -> ChartType:
@@ -361,18 +336,7 @@ class BarChart(BaseChart):
 
     @property
     def color_strategy(self) -> ColorStrategy:
-        # Always use separate colors for metrics-only tables
-        if len(self.metrics) == len(self.table.schema):
-            return ColorStrategy.SEPARATE
-
-        # Use separate colors if we have a single metric and multiple dimensions
-        # or if we have a single dimension with a single metric
-        return (
-            ColorStrategy.SEPARATE
-            if (len(self.metrics) == 1 and len(self.dimensions) > 1)
-            or (len(self.metrics) == 1 and len(self.dimensions) == 1)
-            else ColorStrategy.SINGLE
-        )
+        return ColorStrategy.SEPARATE
 
 
 def create_chart(
@@ -394,12 +358,6 @@ def create_chart(
     # Check if table contains all metrics (no dimensions)
     if len(metrics) == len(table.schema):
         return BarChart(metrics=metrics, dimensions=dimensions, table=table)
-
-    # Check if suitable for doughnut chart (2 columns, few unique values)
-    if len(table.schema) == 2:
-        first_dim = dimensions[0]
-        if len(table.column(first_dim).unique()) <= 5:
-            return DoughnutChart(metrics=metrics, dimensions=dimensions, table=table)
 
     # Use stacked bar for 3+ dimensions
     if len(dimensions) >= 3:
