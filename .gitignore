@@ -10,3 +10,5 @@ js_server/dist/
 js_server/build/
 js_server/static/
 .ruff_cache/
+*.db
+TODO.md

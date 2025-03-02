@@ -1,9 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Semantic Layer Assistant</title>
+    <!-- Add Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Add marked library for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- Add highlight.js with SQL support -->
@@ -12,61 +15,63 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
     <!-- Add Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@4.1.0/cdn.min.js" integrity="sha256-bDgRIzo3i6VHqJMlDwUcu/g1mnxCoS6B1sNW3269kJY=" crossorigin="anonymous"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
             margin: 0;
             padding: 0;
             height: 100vh;
-            background-color: #f0f0f0;
+            background-color: #0F172A;  /* Dark blue background from image */
             display: flex;
             flex-direction: column;
+            color: #E2E8F0;  /* Light gray text for better contrast */
         }
 
         .chat-container {
             flex: 1;
             display: flex;
             flex-direction: column;
-            max-width: 1200px;  /* Increased from 800px */
+            max-width: 1200px;
             margin: 0 auto;
             width: 100%;
-            background: white;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            background: #0F172A;  /* Match body background */
             position: relative;
         }
 
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
-            padding-bottom: 80px; /* Add padding to prevent messages from being hidden behind controls */
+            padding: 40px;
+            padding-bottom: 80px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 16px;  /* Increased gap between messages */
         }
 
         .message {
-            max-width: 85%;  /* Increased from 70% */
-            padding: 10px 15px;
-            border-radius: 15px;
+            max-width: 85%;
+            padding: 16px;  /* Increased padding */
+            border-radius: 12px;  /* Slightly rounded corners */
             margin: 5px 0;
+            line-height: 1.5;  /* Better readability */
+            font-size: 15px;  /* Slightly larger font */
         }
 
         .message pre {
             position: relative;
-            background-color: #f8f9fa;
-            padding: 1em 0.5em 1em 3.8em !important;
-            border-radius: 5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
             overflow-x: auto;
-            margin: 5px 0;
             counter-reset: line;
-            line-height: 1.5;
         }
 
         .message pre code {
-            font-family: 'Courier New', Courier, monospace;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
             display: block;
+            color: #d4d4d4;
+            line-height: 1.5;
+            font-size: 14px;
         }
 
         .message pre code .line {
@@ -81,9 +86,9 @@
             left: -3.3em;
             width: 2.5em;
             text-align: right;
-            color: #999;
-            padding-right: 0.5em;
-            border-right: 1px solid #ddd;
+            color: #6e7681;
+            padding-right: 1em;
+            border-right: 1px solid #404040;
             user-select: none;
         }
 
@@ -92,135 +97,203 @@
         }
 
         .user-message {
-            background-color: #007bff;
-            color: white;
+            background-color: #5EEAD4;  /* Teal accent color from image */
+            color: #0F172A;  /* Dark text for contrast */
             align-self: flex-end;
-            border-bottom-right-radius: 5px;
+            border-bottom-right-radius: 4px;
         }
 
         .assistant-message {
-            background-color: #e9ecef;
-            color: black;
+            background-color: #1E293B;  /* Lighter blue from image */
+            color: #E2E8F0;  /* Light gray text */
             align-self: flex-start;
-            border-bottom-left-radius: 5px;
+            border-bottom-left-radius: 4px;
         }
 
         /* Tabs styling */
         .tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: 24px;
+            border-bottom: 1px solid #2D3748;  /* Darker border to match theme */
+            padding-bottom: 20px;
         }
 
         .tab {
-            padding: 8px 16px;
-            background-color: #f8f9fa;
+            padding: 8px 4px;
+            background: none;
             border: none;
-            border-radius: 5px;
+            color: #94A3B8;  /* Lighter gray for inactive tabs */
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: all 0.2s;
+            position: relative;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .tab::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #5EEAD4;  /* Changed to teal accent */
+            transform: scaleX(0);
+            transition: transform 0.2s;
+        }
+
+        .tab:hover {
+            color: #E2E8F0;  /* Lighter color on hover */
         }
 
         .tab.active {
-            background-color: #007bff;
-            color: white;
+            color: #5EEAD4;  /* Teal accent for active tab */
+        }
+
+        .tab.active::after {
+            transform: scaleX(1);
+        }
+
+        .message p {
+            margin: 0;
         }
 
         .tab-content {
             display: none;
+            border: 1px solid #2d2d2d;
+            margin-top: -1px;
+            max-height: 500px;  /* Add max height */
+            overflow-y: auto;   /* Enable vertical scrolling */
+            background-color: #1E293B;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3),  /* Deeper outer shadow */
+                       0 8px 16px rgba(0, 0, 0, 0.2),   /* Mid-level shadow */
+                       0 2px 4px rgba(0, 0, 0, 0.1);    /* Subtle inner shadow */
+            margin: 16px 0;  /* Add some vertical spacing */
+            border: 1px solid #2D3748;  /* Subtle border */
         }
 
         .tab-content.active {
             display: block;
-        }
-
-        /* Table styling */
-        .data-table {
             width: 100%;
-            border-collapse: collapse;
-            margin: 10px 0;
+            min-width: 600px;
+            overflow-x: auto;
         }
 
-        .data-table th, .data-table td {
-            border: 1px solid #dee2e6;
-            padding: 8px;
-            text-align: left;
+
+        .data-table th,
+        .data-table td {
+            padding: 12px 16px;
+            color: #E2E8F0;
+            border-bottom: 1px solid #2D3748;
+            border-right: 1px solid #2D3748;
+            font-size: 14px;
+            line-height: 1.5;
         }
 
         .data-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
+            background-color: #233047;  /* Slightly darker than table background */
+            font-weight: 500;  /* Slightly lighter weight */
+            text-transform: none;  /* Remove uppercase */
+            font-size: 14px;  /* Same as content */
+            letter-spacing: 0.01em;  /* Reduced letter spacing */
+            color: #94A3B8;  /* Softer color for headers */
+            white-space: nowrap;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 1;
         }
 
-        .data-table tr:nth-child(even) {
-            background-color: #f8f9fa;
+        .data-table tbody tr {
+            transition: background-color 0.2s ease;
+            border-left: 2px solid transparent;
+        }
+
+        .data-table tbody tr:nth-child(even) {
+            background-color: #1c2538;  /* Very subtle difference */
+        }
+
+        .data-table tbody tr:hover {
+            background-color: #233047;  /* Same as header for consistency */
+            border-left: 2px solid #94A3B8;  /* More subtle indicator */
+        }
+
+        /* Style for metric values (right-aligned cells) */
+        .data-table td[style*="text-align: right"] {
+            text-align: right;
+        }
+
+        /* Remove border from last column */
+        .data-table th:last-child,
+        .data-table td:last-child {
+            border-right: none;
+        }
+
+        /* Remove border from last row */
+        .data-table tbody tr:last-child td {
+            border-bottom: none;
         }
 
         .controls {
             padding: 20px;
-            background: white;
-            border-top: 1px solid #dee2e6;
+            background: #1E293B;  /* Lighter blue background */
+            border-top: 1px solid #2D3748;  /* Subtle border */
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 10px;
+            gap: 16px;
             position: sticky;
             bottom: 0;
             z-index: 100;
         }
 
-        #toggleAudio, #clearChat {
-            font-size: 16px;
+        #toggleAudio,
+        #clearChat {
+            font-size: 15px;
             padding: 12px 24px;
             cursor: pointer;
             border: none;
-            border-radius: 25px;
-            transition: all 0.3s ease;
+            border-radius: 8px;
+            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             gap: 8px;
+            font-weight: 500;
+            background-color: #5EEAD4;  /* Teal accent color */
+            color: #0F172A;  /* Dark text */
         }
 
         #clearChat {
-            background-color: #6c757d;
-            color: white;
+            background-color: transparent;  /* Remove background */
+            color: #EF4444;  /* Red for delete/clear actions */
+            border: none;
+            transition: all 0.2s;
         }
 
         #clearChat:hover {
-            background-color: #5a6268;
+            background-color: rgba(239, 68, 68, 0.1);  /* Subtle red background on hover */
         }
 
-        #toggleAudio {
-            background-color: #dc3545;
-            color: white;
+        #clearChat svg {
+            stroke: #EF4444;  /* Make the icon red too */
+        }
+
+        #toggleAudio:hover {
+            background-color: #2DD4BF;  /* Slightly darker on hover */
         }
 
         #toggleAudio.recording {
-            background-color: #dc3545;
-            animation: pulse 1.5s infinite;
-        }
-
-        #toggleAudio:not(.recording) {
-            background-color: #0d6efd;
-        }
-
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.05);
-            }
-            100% {
-                transform: scale(1);
-            }
+            background-color: #EF4444;  /* Red for recording state */
+            color: white;
         }
 
         .loading {
             display: none;
             align-items: center;
             gap: 8px;
-            color: #6c757d;
+            color: #94A3B8;  /* Muted text color */
+            font-size: 14px;
         }
 
         .loading.active {
@@ -233,122 +306,853 @@
         }
 
         .dot {
-            width: 8px;
-            height: 8px;
-            background-color: #6c757d;
+            width: 6px;
+            height: 6px;
+            background-color: #5EEAD4;  /* Teal dots */
             border-radius: 50%;
             animation: bounce 1.4s infinite ease-in-out;
         }
 
-        .dot:nth-child(1) { animation-delay: -0.32s; }
-        .dot:nth-child(2) { animation-delay: -0.16s; }
+        .dot:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: -0.16s;
+        }
 
         @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
+            0%,
+            80%,
+            100% {
+                transform: scale(0);
+            }
+
+            40% {
+                transform: scale(1);
+            }
         }
 
         /* Copy button styling */
         .copy-button {
             position: absolute;
-            top: 5px;
-            right: 5px;
-            padding: 5px 10px;
-            background: #f0f0f0;
-            border: 1px solid #ddd;
-            border-radius: 3px;
+            top: 8px;
+            right: 8px;
+            padding: 6px;
+            background: #233047;  /* Match the header background */
+            color: #94A3B8;  /* Match the muted text color */
+            border: 1px solid #2D3748;  /* Match other borders */
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 12px;
-            opacity: 0.8;
-            transition: opacity 0.2s;
+            opacity: 0;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
         }
 
-        .copy-button:hover {
+        .message pre:hover .copy-button {
             opacity: 1;
         }
 
+        .copy-button:hover {
+            background: #2D3748;
+            color: #5EEAD4;  /* Use accent color on hover */
+            border-color: #5EEAD4;  /* Use accent color for border */
+        }
+
         .copy-button.copied {
-            background: #28a745;
-            color: white;
-            border-color: #28a745;
+            background: #5EEAD4;  /* Use accent color for success state */
+            color: #0F172A;  /* Dark text for contrast */
+            border-color: #5EEAD4;
         }
 
         /* Chart container styling */
         .chart-container {
-            width: 100%;
-            min-width: 600px;  /* Add minimum width */
+            width: 800px;
             height: 400px;
             position: relative;
-            margin-top: 10px;
-            overflow-x: auto;  /* Allow horizontal scrolling if needed */
-            padding: 20px;     /* Add padding around the chart */
+            overflow-x: auto;
+            padding: 20px;
+            background-color: #1E293B;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         /* Make sure the canvas respects the container size */
         .chart-container canvas {
             width: 100% !important;
             height: 100% !important;
-            min-width: 600px;  /* Match container min-width */
+            min-width: 600px;
         }
 
-        /* Ensure tab content maintains width */
-        .tab-content.active {
-            display: block;
+        /* Make the table header sticky within the scrollable container */
+        .data-table thead th {
+            background: #0F172A;  /* Match header background */
+            border-bottom: 2px solid #404040;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        /* Ensure proper table layout within scrollable container */
+        .data-table {
             width: 100%;
-            min-width: 600px;  /* Match container min-width */
-            overflow-x: auto;  /* Allow horizontal scrolling if needed */
+            border-collapse: separate;
+            border-spacing: 0;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+        }
+
+        /* Add styles for conversation management */
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            background-color: #1E293B;  /* Lighter blue background */
+            color: #E2E8F0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .new-chat-button {
+            background-color: #5EEAD4;  /* Teal accent */
+            color: #0F172A;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        .new-chat-button:hover {
+            background-color: #2DD4BF;
+        }
+
+        .conversation-list {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .conversation-item {
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #E2E8F0;
+            transition: background-color 0.2s;
+            position: relative;
+        }
+
+        .conversation-item:hover {
+            background-color: #334155;
+        }
+
+        .conversation-item.active {
+            background-color: #334155;
+        }
+
+        .conversation-title {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 14px;
+        }
+
+        .delete-conversation {
+            opacity: 0;
+            background: none;
+            border: none;
+            color: #EF4444;  /* Red for delete */
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .conversation-item:hover .delete-conversation {
+            opacity: 1;
+        }
+
+        .delete-conversation:hover {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
+        .conversation-title-input {
+            background: transparent;
+            border: none;
+            color: #E2E8F0;
+            font-size: 14px;
+            width: 100%;
+            padding: 4px;
+        }
+
+        .conversation-title-input:focus {
+            outline: none;
+            border-bottom: 1px solid #5EEAD4;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: none;
+            margin: 0;
+            background: #0F172A;  /* Changed from white to match dark theme */
+            position: relative;
+        }
+
+        /* Override highlight.js theme for SQL */
+        .hljs {
+            background: #1E293B !important;
+            color: #d4d4d4 !important;
+        }
+
+        .hljs-keyword {
+            color: #569cd6 !important;
+        }
+
+        .hljs-string {
+            color: #ce9178 !important;
+        }
+
+        .hljs-number {
+            color: #b5cea8 !important;
+        }
+
+        .hljs-built_in {
+            color: #4ec9b0 !important;
+        }
+
+        .hljs-type {
+            color: #4ec9b0 !important;
+        }
+
+        .hljs-literal {
+            color: #569cd6 !important;
+        }
+
+        .hljs-comment {
+            color: #6a9955 !important;
+        }
+
+        .hljs-operator {
+            color: #d4d4d4 !important;
+        }
+
+        .context-button {
+            opacity: 0;
+            background: none;
+            border: none;
+            color: #94A3B8;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .conversation-item:hover .context-button {
+            opacity: 1;
+        }
+
+        .context-button:hover {
+            background-color: rgba(94, 234, 212, 0.1);
+            color: #5EEAD4;
+        }
+
+        .context-banner {
+            background-color: rgba(30, 41, 59, 0.8);  /* More transparent background */
+            border-bottom: 1px solid #2D3748;
+            padding: 8px 16px;  /* Slightly reduced padding */
+            position: sticky;  /* Make it stick to the top */
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(8px);  /* Add blur effect for better readability */
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .context-banner:hover {
+            background-color: rgba(30, 41, 59, 0.9);
+        }
+
+        .context-banner.has-context {
+            background-color: rgba(234, 179, 8, 0.1);  /* Warning color with low opacity */
+            border-bottom: 1px solid rgba(234, 179, 8, 0.2);
+        }
+
+        .context-banner.has-context:hover {
+            background-color: rgba(234, 179, 8, 0.15);
+        }
+
+        .context-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1200px;
+            margin: 0 auto;
+            color: #94A3B8;  /* Default muted color */
+        }
+
+        .context-banner.has-context .context-content {
+            color: #EAB308;  /* Warning color */
+        }
+
+        .context-text {
+            font-size: 13px;
+            font-weight: 400;
+            flex: 1;
+        }
+
+        .context-icon {
+            margin-left: 8px;
+            opacity: 0.8;
+        }
+
+        .context-banner:hover .context-icon {
+            opacity: 1;
+        }
+
+        #contextInput {
+            background-color: #1E293B;
+            border: 1px solid #2D3748;
+            color: #E2E8F0;
+        }
+
+        #contextInput:focus {
+            border-color: #5EEAD4;
+            box-shadow: 0 0 0 0.25rem rgba(94, 234, 212, 0.25);
+        }
+
+        .modal-content {
+            background-color: #1E293B !important;  /* Match app background */
+            border: 1px solid #2D3748;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            border-bottom: 1px solid #2D3748;
+            padding: 16px 20px;
+        }
+
+        .modal-body {
+            padding: 20px;
+        }
+
+        .modal-footer {
+            border-top: 1px solid #2D3748;
+            padding: 16px 20px;
+        }
+
+        /* Modal button styles */
+        .modal .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .modal .btn-secondary {
+            background-color: transparent;
+            color: #94A3B8;
+        }
+
+        .modal .btn-secondary:hover {
+            background-color: rgba(148, 163, 184, 0.1);
+            color: #E2E8F0;
+        }
+
+        .modal .btn-danger {
+            background-color: transparent;
+            color: #EF4444;
+        }
+
+        .modal .btn-danger:hover {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
+        .modal .btn-primary {
+            background-color: #5EEAD4;
+            color: #0F172A;
+        }
+
+        .modal .btn-primary:hover {
+            background-color: #2DD4BF;
+        }
+
+        /* Add styles for refresh button */
+        .tabs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 16px;
+        }
+
+        .tabs-nav {
+            display: flex;
+            gap: 24px;
+        }
+
+        .refresh-button {
+            background: none;
+            border: none;
+            color: #94A3B8;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .refresh-button:hover {
+            background-color: rgba(94, 234, 212, 0.1);
+            color: #5EEAD4;
+        }
+
+        .refresh-button.refreshing {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
+
 <body>
-    <div class="chat-container">
-        <div class="chat-messages" id="chatMessages">
-            <div class="message assistant-message">
-                Hello! I'm your dbt Semantic Layer assistant. Click "Start Recording" below and ask some questions!
+    <div class="app-container">
+        <div class="sidebar">
+            <button class="new-chat-button" id="newChat">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                New Chat
+            </button>
+            <div class="conversation-list" id="conversationList">
+                <!-- Conversations will be dynamically added here -->
             </div>
         </div>
-        <div class="controls">
-            <button id="toggleAudio">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8" y1="23" x2="16" y2="23"/>
-                </svg>
-                Start Recording
-            </button>
-            <button id="clearChat">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3-1V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/>
-                    <line x1="10" y1="11" x2="10" y2="17"/>
-                    <line x1="14" y1="11" x2="14" y2="17"/>
-                </svg>
-                Clear Chat
-            </button>
-            <div class="loading" id="loadingIndicator">
-                Processing
-                <div class="loading-dots">
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
+        <div class="chat-container">
+            <!-- Move context banner here, at the top of chat container -->
+            <div id="contextBanner" class="context-banner">
+                <div class="context-content">
+                    <span class="context-text">Add conversation context</span>
+                    <span class="context-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </span>
+                </div>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant-message">
+                    Hello! I'm your dbt Semantic Layer assistant. Click "Start Recording" below and ask some questions!
+                </div>
+            </div>
+            <div class="controls">
+                <button id="toggleAudio">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                    Start Recording
+                </button>
+                <button id="clearChat">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3-1V3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                        <line x1="10" y1="11" x2="10" y2="17" />
+                        <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                    Clear Chat
+                </button>
+                <div class="loading" id="loadingIndicator">
+                    Processing
+                    <div class="loading-dots">
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                        <div class="dot"></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Delete Conversation Modal -->
+    <div class="modal fade" id="deleteConversationModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Conversation</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to delete this conversation? This action cannot be undone.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clear Chat Modal -->
+    <div class="modal fade" id="clearChatModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Clear Chat History</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to clear all messages from this chat? This action cannot be undone.
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmClear">Clear</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Context Modal -->
+    <div class="modal fade" id="contextModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Set Conversation Context</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="contextInput" class="form-label">Add context that will be considered for all questions in this conversation:</label>
+                        <textarea class="form-control" id="contextInput" rows="4"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="clearContext">Clear Context</button>
+                    <button type="button" class="btn btn-primary" id="saveContext">Save Context</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
+        // Initialize Bootstrap modals
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteConversationModal'));
+        const clearModal = new bootstrap.Modal(document.getElementById('clearChatModal'));
+        let conversationToDelete = null;
+
+        // Initialize Chart.js defaults for dark theme
+        Chart.defaults.color = '#d4d4d4';
+        Chart.defaults.borderColor = '#2d2d2d';
+        Chart.defaults.backgroundColor = '#252526';
+
         // Create audio context
         const BUFFER_SIZE = 4800;
-        
-        // Add clear chat functionality
-        document.getElementById('clearChat').addEventListener('click', () => {
-            const messagesContainer = document.getElementById('chatMessages');
-            // Keep only the first welcome message
-            const welcomeMessage = messagesContainer.firstElementChild;
-            messagesContainer.innerHTML = '';
-            messagesContainer.appendChild(welcomeMessage);
+        let currentConversationId = null;
+
+        // Function to create a new conversation
+        async function createNewConversation() {
+            try {
+                const response = await fetch('/api/conversations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: 'New Conversation'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to create conversation');
+                }
+
+                const conversation = await response.json();
+                addConversationToList(conversation);
+                switchToConversation(conversation.id);
+            } catch (error) {
+                console.error('Error creating conversation:', error);
+            }
+        }
+
+        // Function to add a conversation to the list
+        function addConversationToList(conversation) {
+            const conversationList = document.getElementById('conversationList');
+            const conversationItem = document.createElement('div');
+            conversationItem.className = 'conversation-item';
+            conversationItem.dataset.id = conversation.id;
+            
+            // Add chat icon
+            const icon = document.createElement('span');
+            icon.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+            `;
+            
+            // Add title that can be edited
+            const title = document.createElement('div');
+            title.className = 'conversation-title';
+            title.textContent = conversation.title;
+            
+            // Add delete button
+            const deleteButton = document.createElement('button');
+            deleteButton.className = 'delete-conversation';
+            deleteButton.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            `;
+            deleteButton.title = "Delete conversation";
+            
+            // Add delete functionality with modal
+            deleteButton.addEventListener('click', async (e) => {
+                e.stopPropagation(); // Prevent conversation switching when clicking delete
+                conversationToDelete = conversation.id;
+                deleteModal.show();
+            });
+            
+            // Add click handler for editing title
+            title.addEventListener('dblclick', (e) => {
+                if (e.target === title) {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.className = 'conversation-title-input';
+                    input.value = title.textContent;
+                    
+                    const handleTitleUpdate = async () => {
+                        const newTitle = input.value.trim();
+                        if (newTitle && newTitle !== title.textContent) {
+                            try {
+                                await fetch(`/api/conversations/${conversation.id}/title`, {
+                                    method: 'PUT',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify({ title: newTitle })
+                                });
+                                title.textContent = newTitle;
+                            } catch (error) {
+                                console.error('Error updating title:', error);
+                            }
+                        } else {
+                            title.textContent = title.textContent; // Restore original if no change
+                        }
+                        title.removeChild(input);
+                    };
+                    
+                    input.addEventListener('blur', handleTitleUpdate);
+                    input.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            handleTitleUpdate();
+                        }
+                    });
+                    
+                    title.textContent = '';
+                    title.appendChild(input);
+                    input.focus();
+                }
+            });
+            
+            conversationItem.appendChild(icon);
+            conversationItem.appendChild(title);
+            conversationItem.appendChild(deleteButton);
+            
+            // Add click handler for switching conversations
+            conversationItem.addEventListener('click', () => {
+                switchToConversation(conversation.id);
+            });
+            
+            conversationList.insertBefore(conversationItem, conversationList.firstChild);
+        }
+
+        // Function to switch to a conversation
+        async function switchToConversation(conversationId) {
+            try {
+                // Update active state in sidebar
+                document.querySelectorAll('.conversation-item').forEach(item => {
+                    item.classList.toggle('active', item.dataset.id === String(conversationId));
+                });
+                
+                // Fetch conversation messages
+                const response = await fetch(`/api/conversations/${conversationId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch conversation');
+                }
+                
+                const conversation = await response.json();
+                currentConversationId = conversation.id;
+                
+                // Clean up existing charts before clearing messages
+                document.querySelectorAll('.chart-container canvas').forEach(canvas => {
+                    const existingChart = Chart.getChart(canvas);
+                    if (existingChart) {
+                        existingChart.destroy();
+                    }
+                });
+                
+                // Clear and populate messages
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.innerHTML = '';
+
+                conversation.messages.forEach(message => {
+                    addMessage(message.text, message.is_user, message.id);
+                });
+                
+                if (conversation.messages.length === 0) {
+                    // Add welcome message if conversation is empty
+                    addMessage("Hello! I'm your dbt Semantic Layer assistant. Click \"Start Recording\" below and ask some questions!", false);
+                }
+
+                // Update context banner
+                updateContextBanner(conversation.context);
+            } catch (error) {
+                console.error('Error switching conversation:', error);
+            }
+        }
+
+        // Handle delete confirmation
+        document.getElementById('confirmDelete').addEventListener('click', async () => {
+            if (!conversationToDelete) return;
+            
+            try {
+                const response = await fetch(`/api/conversations/${conversationToDelete}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to delete conversation');
+                }
+                
+                // Remove the conversation item from the list
+                const item = document.querySelector(`.conversation-item[data-id="${conversationToDelete}"]`);
+                if (item) {
+                    item.remove();
+                }
+                
+                // If this was the active conversation, try to switch to another one
+                if (currentConversationId === conversationToDelete) {
+                    // Find the first remaining conversation
+                    const remainingConversation = document.querySelector('.conversation-item');
+                    if (remainingConversation) {
+                        // Switch to the first remaining conversation
+                        switchToConversation(remainingConversation.dataset.id);
+                    } else {
+                        // Only create a new conversation if there are none left
+                        createNewConversation();
+                    }
+                }
+            } catch (error) {
+                console.error('Error deleting conversation:', error);
+                alert('Failed to delete conversation. Please try again.');
+            } finally {
+                deleteModal.hide();
+                conversationToDelete = null;
+            }
         });
-        
+
+        // Add clear chat functionality with modal
+        document.getElementById('clearChat').addEventListener('click', () => {
+            if (!currentConversationId) return;
+            clearModal.show();
+        });
+
+        // Handle clear chat confirmation
+        document.getElementById('confirmClear').addEventListener('click', async () => {
+            if (!currentConversationId) return;
+            
+            try {
+                await fetch(`/api/conversations/${currentConversationId}/messages`, {
+                    method: 'DELETE'
+                });
+                
+                const messagesContainer = document.getElementById('chatMessages');
+                messagesContainer.innerHTML = '';
+                addMessage("Hello! I'm your dbt Semantic Layer assistant. Click \"Start Recording\" below and ask some questions!", false);
+                
+                clearModal.hide();
+            } catch (error) {
+                console.error('Error clearing messages:', error);
+                alert('Failed to clear messages. Please try again.');
+            }
+        });
+
+        // Add new chat button handler
+        document.getElementById('newChat').addEventListener('click', createNewConversation);
+
+        // Load conversations on page load
+        async function loadConversations() {
+            try {
+                const response = await fetch('/api/conversations');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch conversations');
+                }
+                
+                const conversations = await response.json();
+                conversations.forEach(conversation => {
+                    addConversationToList(conversation);
+                });
+                
+                // Switch to the most recent conversation if it exists
+                if (conversations.length > 0) {
+                    switchToConversation(conversations[0].id);
+                } else {
+                    // Create a new conversation if none exist
+                    createNewConversation();
+                }
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+                // Create a new conversation if loading fails
+                createNewConversation();
+            }
+        }
+
+        // Initialize conversations on page load
+        loadConversations();
+
         // Player and Recorder classes remain the same
         class Player {
             constructor() {
@@ -374,7 +1178,7 @@
                     this.playbackNode.port.postMessage(null);
                 }
             }
-        }   
+        }
 
         class Recorder {
             constructor(onDataAvailable) {
@@ -437,19 +1241,146 @@
         }
 
         // Function to add a message to the chat
-        function addMessage(text, isUser = false) {
-            const messagesContainer = document.getElementById('chatMessages');
+        function addMessage(text, isUser = false, messageId = null, targetContainer = null) {
+            const messagesContainer = targetContainer || document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
-            
+            if (messageId) {
+                messageDiv.dataset.messageId = messageId;
+            }
+
             try {
                 // Try to parse as JSON in case it's a query result
                 const data = JSON.parse(text);
+                console.log('data', data);
                 if (data.sql && data.data) {
-                    // Create tabs container
+                    // Create tabs container with header
                     const tabsContainer = document.createElement('div');
-                    tabsContainer.className = 'tabs';
+                    const tabsHeader = document.createElement('div');
+                    tabsHeader.className = 'tabs-header';
                     
+                    const tabsNav = document.createElement('div');
+                    tabsNav.className = 'tabs-nav';
+
+                    // Create refresh button
+                    const refreshButton = document.createElement('button');
+                    refreshButton.className = 'refresh-button';
+                    refreshButton.title = 'Refresh data';
+                    refreshButton.innerHTML = `
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6"></path>
+                            <path d="M1 20v-6h6"></path>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"></path>
+                            <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"></path>
+                        </svg>
+                    `;
+
+                    // Function to handle refresh
+                    const handleRefresh = async (refreshButton) => {
+                        if (refreshButton.classList.contains('refreshing')) return; // Prevent multiple clicks
+
+                        try {
+                            // Find the message element
+                            const messageElement = refreshButton.closest('.message');
+                            if (!messageElement) return;
+
+                            // Get the message ID from the data attribute
+                            const messageId = messageElement.dataset.messageId;
+                            if (!messageId) {
+                                throw new Error('Message ID not found');
+                            }
+
+                            // Add refreshing state
+                            refreshButton.classList.add('refreshing');
+                            
+                            // Call update endpoint with actual message ID
+                            const response = await fetch(`/api/conversations/${currentConversationId}/messages/${messageId}`, {
+                                method: 'PUT'
+                            });
+
+                            if (!response.ok) {
+                                throw new Error('Failed to update data');
+                            }
+
+                            const updatedData = await response.json();
+                            
+                            // Create a temporary div to hold the new message content
+                            const tempDiv = document.createElement('div');
+                            addMessage(JSON.stringify(updatedData), false, messageId, tempDiv);
+
+                            // Store the active tab index before replacing content
+                            const activeTabIndex = Array.from(messageElement.querySelectorAll('.tab')).findIndex(tab => tab.classList.contains('active'));
+
+                            // Replace the message content
+                            messageElement.innerHTML = tempDiv.firstChild.innerHTML;
+
+                            // Get references to the new tabs and content areas
+                            const newTabs = messageElement.querySelectorAll('.tab');
+                            const newContents = messageElement.querySelectorAll('.tab-content');
+                            const newRefreshButton = messageElement.querySelector('.refresh-button');
+
+                            // Reattach refresh button handler
+                            if (newRefreshButton) {
+                                newRefreshButton.addEventListener('click', () => handleRefresh(newRefreshButton));
+                            }
+
+                            // Reattach click event listeners to tabs
+                            newTabs.forEach((tab, index) => {
+                                tab.addEventListener('click', () => {
+                                    newTabs.forEach(t => t.classList.remove('active'));
+                                    newContents.forEach(c => c.classList.remove('active'));
+                                    tab.classList.add('active');
+                                    newContents[index].classList.add('active');
+                                });
+                            });
+
+                            // Restore the active tab
+                            if (activeTabIndex >= 0) {
+                                newTabs[activeTabIndex].click();
+                            }
+
+                            // Reattach copy button functionality
+                            messageElement.querySelectorAll('.copy-button').forEach(button => {
+                                button.addEventListener('click', () => {
+                                    const content = button.closest('.tab-content').querySelector('pre').textContent;
+                                    navigator.clipboard.writeText(content);
+                                    button.textContent = 'Copied!';
+                                    setTimeout(() => {
+                                        button.textContent = 'Copy';
+                                    }, 2000);
+                                });
+                            });
+
+                            // Reinitialize the chart if chart data exists
+                            if (updatedData.chart_config) {
+                                const chartCanvas = messageElement.querySelector('.chart-container canvas');
+                                if (chartCanvas) {
+                                    // Destroy existing chart if it exists
+                                    const existingChart = Chart.getChart(chartCanvas);
+                                    if (existingChart) {
+                                        existingChart.destroy();
+                                    }
+                                    // Create new chart
+                                    new Chart(chartCanvas, updatedData.chart_config);
+                                }
+                            }
+
+                            // Reapply syntax highlighting
+                            messageElement.querySelectorAll('pre code').forEach(block => {
+                                hljs.highlightBlock(block);
+                            });
+
+                        } catch (error) {
+                            console.error('Error updating data:', error);
+                            alert('Failed to update data. Please try again.');
+                        } finally {
+                            refreshButton.classList.remove('refreshing');
+                        }
+                    };
+
+                    // Add refresh functionality
+                    refreshButton.addEventListener('click', () => handleRefresh(refreshButton));
+
                     // Create Chart tab
                     const chartTab = document.createElement('button');
                     chartTab.className = 'tab active';
@@ -459,21 +1390,26 @@
                     const dataTab = document.createElement('button');
                     dataTab.className = 'tab';
                     dataTab.textContent = 'Data';
-                    
+
                     // Create SQL tab
                     const sqlTab = document.createElement('button');
                     sqlTab.className = 'tab';
                     sqlTab.textContent = 'SQL';
+
+                    // Add tabs in appropriate order
+                    tabsNav.appendChild(chartTab);
+                    tabsNav.appendChild(dataTab);
+                    tabsNav.appendChild(sqlTab);
                     
-                    // Add tabs in new order
-                    tabsContainer.appendChild(chartTab);
-                    tabsContainer.appendChild(dataTab);
-                    tabsContainer.appendChild(sqlTab);
-                    
+                    // Combine tabs and refresh button
+                    tabsHeader.appendChild(tabsNav);
+                    tabsHeader.appendChild(refreshButton);
+                    tabsContainer.appendChild(tabsHeader);
+
                     // Create content containers
                     const chartContent = document.createElement('div');
                     chartContent.className = 'tab-content active';
-                    
+
                     // Create chart container
                     const chartContainer = document.createElement('div');
                     chartContainer.className = 'chart-container';
@@ -484,6 +1420,11 @@
                     // Initialize chart if config exists
                     if (data.chart_config) {
                         const ctx = canvas.getContext('2d');
+                        // Destroy any existing chart on this canvas
+                        const existingChart = Chart.getChart(canvas);
+                        if (existingChart) {
+                            existingChart.destroy();
+                        }
                         // Create chart with simplified time axis configuration
                         const config = {
                             ...data.chart_config,
@@ -491,16 +1432,6 @@
                                 ...data.chart_config.options,
                                 maintainAspectRatio: false,
                                 responsive: true,
-                                scales: {
-                                    ...data.chart_config.options.scales,
-                                    x: {
-                                        type: 'category',  // Use category instead of time
-                                        display: true,
-                                        title: {
-                                            display: true
-                                        }
-                                    }
-                                },
                                 layout: {
                                     padding: {
                                         top: 20,
@@ -518,44 +1449,59 @@
 
                     const dataContent = document.createElement('div');
                     dataContent.className = 'tab-content';
-                    
+
                     const sqlContent = document.createElement('div');
                     sqlContent.className = 'tab-content';
-                    
+
                     // Create pre and code elements with line numbers
                     const pre = document.createElement('pre');
                     const code = document.createElement('code');
                     code.className = 'sql';
-                    
+
                     // Split SQL into lines and wrap each in a span
                     const lines = data.sql.split('\n');
-                    code.innerHTML = lines.map(line => 
+                    code.innerHTML = lines.map(line =>
                         `<span class="line">${line}</span>`
                     ).join('\n');
-                    
+
                     // Add copy button
                     const copyButton = document.createElement('button');
                     copyButton.className = 'copy-button';
-                    copyButton.textContent = 'Copy SQL';
+                    copyButton.innerHTML = `
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    `;
+                    copyButton.title = "Copy SQL";
                     copyButton.onclick = () => {
                         navigator.clipboard.writeText(data.sql).then(() => {
-                            copyButton.textContent = 'Copied!';
+                            copyButton.innerHTML = `
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20 6L9 17l-5-5"></path>
+                                </svg>
+                            `;
                             copyButton.classList.add('copied');
                             setTimeout(() => {
-                                copyButton.textContent = 'Copy SQL';
+                                copyButton.innerHTML = `
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                `;
                                 copyButton.classList.remove('copied');
                             }, 2000);
                         });
                     };
-                    
+
                     pre.appendChild(copyButton);
                     pre.appendChild(code);
                     sqlContent.appendChild(pre);
-                    
+
                     // Create table from data
                     const table = document.createElement('table');
                     table.className = 'data-table';
-                    
+
                     // Add number formatting function
                     const formatNumber = (value) => {
                         if (value === null || value === undefined || value === '') {
@@ -565,12 +1511,14 @@
                         if (isNaN(num)) {
                             return value;
                         }
-                        return `$${num.toLocaleString('en-US', {
+                        // Format with commas and no decimal places for better readability
+                        return num.toLocaleString('en-US', {
                             minimumFractionDigits: 0,
-                            maximumFractionDigits: 0
-                        })}`;
+                            maximumFractionDigits: 0,
+                            useGrouping: true
+                        });
                     };
-                    
+
                     // Add headers
                     const headers = Object.keys(data.data);
                     const thead = document.createElement('thead');
@@ -582,39 +1530,39 @@
                     });
                     thead.appendChild(headerRow);
                     table.appendChild(thead);
-                    
-                    // Create set of metric names for easy lookup
-                    const metricSet = new Set(data.metrics?.map(m => m.toUpperCase()) || []);
-                    
+
+                    const upperMetrics = data.metrics ? data.metrics.map(m => m.toUpperCase()) : [];
+
                     // Add data rows
                     const tbody = document.createElement('tbody');
                     const rowCount = data.data[headers[0]].length;
+
                     for (let i = 0; i < rowCount; i++) {
                         const row = document.createElement('tr');
                         headers.forEach(header => {
                             const td = document.createElement('td');
                             const value = data.data[header][i];
-                            
+
                             // Format if this is a metric column
-                            if (metricSet.has(header)) {
+                            if (upperMetrics && upperMetrics.includes(header)) {
                                 td.textContent = formatNumber(value);
                                 td.style.textAlign = 'right';
                             } else {
                                 td.textContent = value;
                             }
-                            
+
                             row.appendChild(td);
                         });
                         tbody.appendChild(row);
                     }
                     table.appendChild(tbody);
                     dataContent.appendChild(table);
-                    
+
                     messageDiv.appendChild(tabsContainer);
                     messageDiv.appendChild(chartContent);
                     messageDiv.appendChild(dataContent);
                     messageDiv.appendChild(sqlContent);
-                    
+
                     // Add tab switching functionality
                     chartTab.addEventListener('click', () => {
                         chartTab.classList.add('active');
@@ -633,7 +1581,7 @@
                         chartContent.classList.remove('active');
                         sqlContent.classList.remove('active');
                     });
-                    
+
                     sqlTab.addEventListener('click', () => {
                         sqlTab.classList.add('active');
                         dataTab.classList.remove('active');
@@ -650,14 +1598,14 @@
                 // Not JSON, render as markdown
                 messageDiv.innerHTML = marked.parse(text);
             }
-            
+
             messagesContainer.appendChild(messageDiv);
-            
+
             // Ensure content is fully scrolled and new message is visible
             setTimeout(() => {
                 // First scroll the message into view
                 messageDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                
+
                 // Then scroll the container to the bottom
                 setTimeout(() => {
                     messagesContainer.scrollTo({
@@ -666,7 +1614,7 @@
                     });
                 }, 100);
             }, 100);
-            
+
             // Apply syntax highlighting to code blocks
             messageDiv.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightBlock(block);
@@ -681,7 +1629,8 @@
         async function startAudio() {
             try {
                 // Initialize WebSocket
-                ws = new WebSocket("ws://localhost:3000/ws");
+                const wsUrl = `ws://localhost:3000/ws?conversation_id=${currentConversationId}`;
+                ws = new WebSocket(wsUrl);
                 console.log('WebSocket connecting...');
 
                 // Initialize audio player
@@ -698,26 +1647,74 @@
                     try {
                         const message = JSON.parse(event.data);
                         console.log('Parsed WebSocket message:', message);
-                        
+
                         switch (message.type) {
                             case "assistant.response":
                                 // Handle assistant's text response
                                 addMessage(message.text, false);
+                                // Save message to conversation
+                                if (currentConversationId) {
+                                    fetch(`/api/conversations/${currentConversationId}/messages`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            text: message.text,
+                                            is_user: false,
+                                            timestamp: new Date().toISOString()
+                                        })
+                                    }).then(response => response.json())
+                                      .then(data => {
+                                        // Update the last message with its ID
+                                        const messages = document.querySelectorAll('.message');
+                                        const lastMessage = messages[messages.length - 1];
+                                        if (lastMessage) {
+                                            lastMessage.dataset.messageId = data.id;
+                                        }
+                                    }).catch(error => {
+                                        console.error('Error saving assistant message:', error);
+                                    });
+                                }
                                 document.getElementById('loadingIndicator').classList.remove('active');
                                 break;
-                                
+
                             case "user.input":
                                 // Handle user's transcribed input
                                 addMessage(message.text, true);
+                                // Save message to conversation
+                                if (currentConversationId) {
+                                    fetch(`/api/conversations/${currentConversationId}/messages`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            text: message.text,
+                                            is_user: true,
+                                            timestamp: new Date().toISOString()
+                                        })
+                                    }).then(response => response.json())
+                                      .then(data => {
+                                        // Update the last message with its ID
+                                        const messages = document.querySelectorAll('.message');
+                                        const lastMessage = messages[messages.length - 1];
+                                        if (lastMessage) {
+                                            lastMessage.dataset.messageId = data.id;
+                                        }
+                                    }).catch(error => {
+                                        console.error('Error saving user message:', error);
+                                    });
+                                }
                                 // Show loading indicator after user input is received
                                 document.getElementById('loadingIndicator').classList.add('active');
                                 break;
-                                
+
                             case "function_call":
                                 // Keep loading indicator active during function calls
                                 document.getElementById('loadingIndicator').classList.add('active');
                                 break;
-                                
+
                             case "error":
                                 // Handle error messages
                                 console.error('Error from server:', message.error);
@@ -735,15 +1732,67 @@
                                     console.log('Function call output:', result);
                                     if (result.type === "query_result") {
                                         // It's a query result, display it
-                                        addMessage(JSON.stringify({
+                                        const outputText = JSON.stringify({
                                             sql: result.sql,
                                             data: result.data,
-                                            chart_config: result.chart_config
-                                        }), false);
+                                            chart_config: result.chart_config,
+                                            metrics: result.metrics,
+                                            query: result.query,
+                                        });
+                                        addMessage(outputText, false);
+                                        // Save message to conversation
+                                        if (currentConversationId) {
+                                            fetch(`/api/conversations/${currentConversationId}/messages`, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json'
+                                                },
+                                                body: JSON.stringify({
+                                                    text: outputText,
+                                                    is_user: false,
+                                                    timestamp: new Date().toISOString(),
+                                                    data: result
+                                                })
+                                            }).then(response => response.json())
+                                              .then(data => {
+                                                // Update the last message with its ID
+                                                const messages = document.querySelectorAll('.message');
+                                                const lastMessage = messages[messages.length - 1];
+                                                if (lastMessage) {
+                                                    lastMessage.dataset.messageId = data.id;
+                                                }
+                                            }).catch(error => {
+                                                console.error('Error saving query result:', error);
+                                            });
+                                        }
                                         document.getElementById('loadingIndicator').classList.remove('active');
                                     } else if (result.type === "assistant.response") {
                                         // It's a direct text response from the assistant
                                         addMessage(result.text, false);
+                                        // Save message to conversation
+                                        if (currentConversationId) {
+                                            fetch(`/api/conversations/${currentConversationId}/messages`, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json'
+                                                },
+                                                body: JSON.stringify({
+                                                    text: result.text,
+                                                    is_user: false,
+                                                    timestamp: new Date().toISOString()
+                                                })
+                                            }).then(response => response.json())
+                                              .then(data => {
+                                                // Update the last message with its ID
+                                                const messages = document.querySelectorAll('.message');
+                                                const lastMessage = messages[messages.length - 1];
+                                                if (lastMessage) {
+                                                    lastMessage.dataset.messageId = data.id;
+                                                }
+                                            }).catch(error => {
+                                                console.error('Error saving assistant message:', error);
+                                            });
+                                        }
                                         document.getElementById('loadingIndicator').classList.remove('active');
                                     } else if (result.metrics || result.dimensions) {
                                         // It's metadata about available metrics/dimensions
@@ -752,15 +1801,63 @@
                                     } else {
                                         // Other function outputs, display as text
                                         addMessage(message.output, false);
+                                        // Save message to conversation
+                                        if (currentConversationId) {
+                                            fetch(`/api/conversations/${currentConversationId}/messages`, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json'
+                                                },
+                                                body: JSON.stringify({
+                                                    text: message.output,
+                                                    is_user: false,
+                                                    timestamp: new Date().toISOString()
+                                                })
+                                            }).then(response => response.json())
+                                              .then(data => {
+                                                // Update the last message with its ID
+                                                const messages = document.querySelectorAll('.message');
+                                                const lastMessage = messages[messages.length - 1];
+                                                if (lastMessage) {
+                                                    lastMessage.dataset.messageId = data.id;
+                                                }
+                                            }).catch(error => {
+                                                console.error('Error saving function output:', error);
+                                            });
+                                        }
                                         document.getElementById('loadingIndicator').classList.remove('active');
                                     }
                                 } catch (e) {
                                     // If not JSON or other error, display as text
                                     addMessage(message.output, false);
+                                    // Save message to conversation
+                                    if (currentConversationId) {
+                                        fetch(`/api/conversations/${currentConversationId}/messages`, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json'
+                                            },
+                                            body: JSON.stringify({
+                                                text: message.output,
+                                                is_user: false,
+                                                timestamp: new Date().toISOString()
+                                            })
+                                        }).then(response => response.json())
+                                          .then(data => {
+                                            // Update the last message with its ID
+                                            const messages = document.querySelectorAll('.message');
+                                            const lastMessage = messages[messages.length - 1];
+                                            if (lastMessage) {
+                                                lastMessage.dataset.messageId = data.id;
+                                            }
+                                        }).catch(error => {
+                                            console.error('Error saving message:', error);
+                                        });
+                                    }
                                     document.getElementById('loadingIndicator').classList.remove('active');
                                 }
                                 break;
-                                
+
                             default:
                                 console.log('Unhandled message type:', message.type);
                         }
@@ -769,6 +1866,7 @@
                     }
                 };
 
+                // Handle WebSocket close
                 ws.onclose = (event) => {
                     console.log('WebSocket closed:', event.code, event.reason);
                     if (event.code !== 1000) {
@@ -789,6 +1887,7 @@
                     `;
                 };
 
+                // Handle WebSocket error
                 ws.onerror = (error) => {
                     console.error('WebSocket error:', error);
                     // Only show alert for actual errors, not normal disconnects
@@ -831,7 +1930,7 @@
 
                 // Initialize recorder
                 audioRecorder = new Recorder(handleAudioData);
-                const stream = await navigator.mediaDevices.getUserMedia({ 
+                const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         channelCount: 1,
                         sampleRate: 24000
@@ -846,7 +1945,7 @@
                         const timeout = setTimeout(() => {
                             reject(new Error('WebSocket connection timeout'));
                         }, 5000);  // 5 second timeout
-                        
+
                         ws.addEventListener('open', () => {
                             clearTimeout(timeout);
                             resolve();
@@ -881,7 +1980,7 @@
                     await audioRecorder.stop();
                     audioRecorder = null;
                 }
-                
+
                 if (audioPlayer) {
                     audioPlayer.stop();
                     audioPlayer = null;
@@ -889,20 +1988,22 @@
 
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     // Send a graceful shutdown message
-                    ws.send(JSON.stringify({
-                        type: 'session.close',
-                        reason: 'User stopped recording'
-                    }));
-                    
+                    // ws.send(JSON.stringify({
+                    //     type: 'session.close',
+                    //     reason: 'User stopped recording'
+                    // }));
+
                     // Wait for any pending messages to be processed
                     await new Promise(resolve => setTimeout(resolve, 100));
-                    
+
                     ws.close(1000, 'User stopped recording');
                 }
             } catch (error) {
                 console.error('Error stopping audio:', error);
             } finally {
                 ws = null;
+                // Remove the loading indicator
+                document.getElementById('loadingIndicator').classList.remove('active');
             }
         }
 
@@ -936,6 +2037,119 @@
                 isRecording = false;
             }
         });
+
+        // Initialize context modal with focus management
+        const contextModal = new bootstrap.Modal(document.getElementById('contextModal'));
+        const contextInput = document.getElementById('contextInput');
+        const contextBanner = document.getElementById('contextBanner');
+        const contextText = contextBanner.querySelector('.context-text');
+
+        // Add event listener for modal hide
+        document.getElementById('contextModal').addEventListener('hide.bs.modal', (event) => {
+            // Remove focus from any buttons inside the modal before it hides
+            const focusedElement = document.activeElement;
+            if (focusedElement && focusedElement.tagName === 'BUTTON') {
+                focusedElement.blur();
+            }
+            // Return focus to the context banner
+            contextBanner.focus();
+        });
+
+        // Make context banner focusable
+        contextBanner.setAttribute('tabindex', '0');
+        contextBanner.setAttribute('role', 'button');
+        contextBanner.setAttribute('aria-label', 'Edit conversation context');
+
+        // Function to update context banner
+        function updateContextBanner(context) {
+            const banner = document.getElementById('contextBanner');
+            const textElement = banner.querySelector('.context-text');
+            
+            if (context) {
+                textElement.textContent = `Context: ${context}`;
+                banner.classList.add('has-context');
+            } else {
+                textElement.textContent = 'Add conversation context';
+                banner.classList.remove('has-context');
+            }
+            
+            // Add click and keyboard handler to open context modal
+            const openContextModalHandler = async () => {
+                if (!currentConversationId) return;
+                
+                try {
+                    const response = await fetch(`/api/conversations/${currentConversationId}`);
+                    if (!response.ok) throw new Error('Failed to fetch conversation');
+                    
+                    const conversation = await response.json();
+                    openContextModal(conversation);
+                } catch (error) {
+                    console.error('Error opening context modal:', error);
+                    alert('Failed to open context editor. Please try again.');
+                }
+            };
+            
+            banner.onclick = openContextModalHandler;
+            banner.onkeydown = (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openContextModalHandler();
+                }
+            };
+        }
+
+        // Function to open context modal
+        function openContextModal(conversation) {
+            contextInput.value = conversation.context || '';
+            contextModal.show();
+        }
+
+        // Handle context save
+        document.getElementById('saveContext').addEventListener('click', async () => {
+            if (!currentConversationId) return;
+            
+            const context = contextInput.value.trim();
+            try {
+                await fetch(`/api/conversations/${currentConversationId}/context`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ context })
+                });
+                
+                updateContextBanner(context);
+                contextModal.hide();
+            } catch (error) {
+                console.error('Error saving context:', error);
+                alert('Failed to save context. Please try again.');
+            }
+        });
+
+        // Handle context clear
+        document.getElementById('clearContext').addEventListener('click', async () => {
+            if (!currentConversationId) return;
+            
+            try {
+                await fetch(`/api/conversations/${currentConversationId}/context`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ context: null })
+                });
+                
+                contextInput.value = '';
+                updateContextBanner(null);
+                contextModal.hide();
+            } catch (error) {
+                console.error('Error clearing context:', error);
+                alert('Failed to clear context. Please try again.');
+            }
+        });
+
+
     </script>
 </body>
+
 </html>

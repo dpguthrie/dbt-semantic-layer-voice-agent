@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 from collections.abc import Sequence
-from datetime import datetime
 from typing import Any
 
 from langchain_community.tools import TavilySearchResults
@@ -10,6 +9,7 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 from starlette.applications import Starlette
 
+from server.chart_models import create_chart
 from server.models import (
     QueryParameters,
 )
@@ -81,6 +81,8 @@ class SemanticLayerQueryTool(BaseTool):
     - where (optional): List of filter conditions using TimeDimension() or Dimension() templates
     - order_by (optional): List of ordering specs for metrics or dimensions
     - limit (optional): Number of results to return
+
+    Do not make up metrics or dimensions, only use those returned by the semantic_layer_metadata tool.
     """
     args_schema: type[BaseModel] = QueryParameters
     app: Starlette
@@ -105,212 +107,6 @@ class SemanticLayerQueryTool(BaseTool):
                     formatted_values.append(value)
             formatted_data[key] = formatted_values
         return formatted_data
-
-    def _determine_chart_type(
-        self, data: dict, metrics: list[str], group_by: list[str]
-    ) -> dict[str, Any]:
-        """
-        Determines the optimal chart type and configuration based on data characteristics.
-        References: https://eazybi.com/blog/data-visualization-and-chart-types
-
-        Heuristics considered:
-        - Number of metrics (1 vs multiple)
-        - Number of dimensions (0, 1, 2+)
-        - Type of dimensions (temporal vs categorical)
-        - Number of unique values per dimension
-        - Data distribution
-        """
-        try:
-            # Special case: Single aggregate value with no dimensions
-            if not group_by:
-                # Get the first metric's data
-                metric_data = data.get(metrics[0].upper(), [])
-                if not metric_data:
-                    metric_data = [None]  # Handle empty data case
-
-                return {
-                    "type": "bar",
-                    "data": {
-                        "labels": ["Total"],
-                        "datasets": [
-                            {
-                                "label": metric,
-                                "data": [data.get(metric.upper(), [None])[0]],
-                                "backgroundColor": f"hsl({hash(metric) % 360}, 70%, 50%, 0.5)",
-                                "borderColor": f"hsl({hash(metric) % 360}, 70%, 50%)",
-                            }
-                            for metric in metrics
-                        ],
-                    },
-                    "options": {
-                        "responsive": True,
-                        "plugins": {
-                            "title": {
-                                "display": True,
-                                "text": ", ".join(metrics),
-                            }
-                        },
-                        "scales": {"y": {"beginAtZero": True}},
-                    },
-                }
-
-            # Get the primary dimension (first group_by)
-            primary_dim = group_by[0].upper() if group_by else None
-            primary_values = data.get(primary_dim, []) if primary_dim else []
-
-            # Detect if any dimension starts with METRIC_TIME
-            is_temporal = False
-            temporal_dim = None
-            if group_by:
-                for dim in group_by:
-                    dim_upper = dim.upper()
-                    if dim_upper.startswith("METRIC_TIME"):
-                        is_temporal = True
-                        temporal_dim = dim_upper
-                        primary_dim = dim_upper
-                        primary_values = data.get(primary_dim, [])
-                        break
-
-            # Initialize chart config with defaults
-            config = {
-                "type": "bar",  # Default type
-                "data": {"datasets": []},
-                "options": {
-                    "responsive": True,
-                    "plugins": {
-                        "title": {
-                            "display": True,
-                            "text": f"{', '.join(metrics)} by {', '.join(group_by) if group_by else 'Value'}",
-                        }
-                    },
-                },
-            }
-
-            # Count unique values in primary dimension
-            unique_values = (
-                len({str(v) for v in primary_values}) if primary_values else 0
-            )
-
-            # Case 2: Temporal dimension
-            if is_temporal:
-                config["type"] = "line"
-
-                # Convert dates to timestamps for Chart.js
-                timestamps = []
-                for date_str in primary_values:
-                    try:
-                        # Parse the date string and convert to milliseconds timestamp
-                        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
-                        timestamp = int(
-                            date_obj.timestamp() * 1000
-                        )  # Convert to milliseconds
-                        timestamps.append(timestamp)
-                    except Exception as e:
-                        logger.error(f"Error converting date: {e}")
-                        timestamps.append(
-                            date_str
-                        )  # Fallback to original string if parsing fails
-
-                if len(metrics) > 1:
-                    # Multiple metrics over time - use multi-series line chart
-                    config["options"]["interaction"] = {
-                        "mode": "index",
-                        "intersect": False,
-                    }
-
-                # Configure time scale
-                config["options"]["scales"] = {
-                    "x": {
-                        "type": "time",
-                        "time": {
-                            "unit": "day",  # Can be made dynamic based on data range
-                            "displayFormats": {"day": "MMM D, YYYY"},
-                        },
-                        "title": {
-                            "display": True,
-                            "text": temporal_dim.replace("METRIC_TIME_", "")
-                            .replace("_", " ")
-                            .title(),
-                        },
-                    },
-                    "y": {
-                        "beginAtZero": True,
-                        "title": {"display": True, "text": ", ".join(metrics)},
-                    },
-                }
-
-                # Update datasets with timestamps
-                config["data"]["labels"] = timestamps
-                config["data"]["datasets"] = [
-                    {
-                        "label": metric,
-                        "data": [
-                            {"x": timestamps[i], "y": data.get(metric.upper(), [])[i]}
-                            for i in range(len(timestamps))
-                        ],
-                        "borderColor": f"hsl({hash(metric) % 360}, 70%, 50%)",
-                        "backgroundColor": f"hsl({hash(metric) % 360}, 70%, 50%, 0.5)",
-                        "tension": 0.3,  # Add slight curve to lines
-                    }
-                    for metric in metrics
-                ]
-
-            # Case 3: Single categorical dimension
-            elif len(group_by) == 1:
-                if unique_values <= 7:  # Based on article recommendation
-                    config["type"] = "bar"
-                    if len(metrics) > 1:
-                        # Use grouped bar chart for multiple metrics
-                        config["data"]["datasets"] = [
-                            {
-                                "label": metric,
-                                "data": data.get(metric.upper(), []),
-                                "backgroundColor": f"hsl({hash(metric) % 360}, 70%, 50%)",
-                            }
-                            for metric in metrics
-                        ]
-                else:
-                    # Many categories - use horizontal bar
-                    config["type"] = "bar"
-                    config["options"]["indexAxis"] = "y"  # This makes it horizontal
-
-            # Case 4: Multiple dimensions
-            else:
-                if len(metrics) == 1:
-                    # Single metric with multiple dimensions - use stacked bar
-                    config["type"] = "bar"
-                    config["options"]["scales"] = {
-                        "x": {"stacked": True},
-                        "y": {"stacked": True},
-                    }
-                else:
-                    # Multiple metrics and dimensions - use grouped bar
-                    config["type"] = "bar"
-                    if unique_values > 7:
-                        config["options"]["indexAxis"] = "y"  # This makes it horizontal
-
-            # Set common data properties
-            config["data"]["labels"] = [str(v) for v in primary_values]
-            if not config["data"].get("datasets"):
-                config["data"]["datasets"] = [
-                    {
-                        "label": metric,
-                        "data": data.get(metric.upper(), []),
-                        "borderColor": f"hsl({hash(metric) % 360}, 70%, 50%)",
-                        "backgroundColor": f"hsl({hash(metric) % 360}, 70%, 50%, 0.5)",
-                    }
-                    for metric in metrics
-                ]
-
-            return config
-        except Exception as e:
-            logger.error(f"Error determining chart type: {e}")
-            # Return a minimal valid chart config on error
-            return {
-                "type": "bar",
-                "data": {"labels": [], "datasets": []},
-                "options": {"responsive": True},
-            }
 
     async def _arun(
         self,
@@ -353,14 +149,38 @@ class SemanticLayerQueryTool(BaseTool):
 
             logger.debug("Query completed successfully")
 
+            chart_js_config = None
+            try:
+                chart = create_chart(metrics=metrics, dimensions=group_by, table=table)
+                chart_js_config = chart.get_config()
+            except Exception as e:
+                logger.error(f"Error creating chart config: {e}")
+                # Provide a fallback chart configuration that shows an error message
+                chart_js_config = {
+                    "type": "bar",  # Use simple bar chart as fallback
+                    "data": {"labels": [], "datasets": []},
+                    "options": {
+                        "responsive": True,
+                        "plugins": {
+                            "title": {
+                                "display": True,
+                                "text": "Unable to create chart visualization",
+                                "color": "#94EAD4",  # Using one of our theme colors
+                                "font": {"size": 16},
+                            },
+                            "subtitle": {
+                                "display": True,
+                                "text": str(e),
+                                "color": "#666",
+                                "font": {"size": 14},
+                            },
+                        },
+                    },
+                }
+
             # Convert table to dict and format the data
             data_dict = table.to_pydict()
             formatted_data = self._format_data(data_dict)
-
-            # Generate chart configuration using our internal logic
-            chart_config = self._determine_chart_type(
-                data=formatted_data, metrics=metrics, group_by=group_by or []
-            )
 
             # Format the response for the frontend - ensure it's wrapped correctly for direct return
             return {
@@ -370,8 +190,16 @@ class SemanticLayerQueryTool(BaseTool):
                         "type": "query_result",
                         "sql": sql,
                         "data": formatted_data,
-                        "chart_config": chart_config,
+                        "chart_config": chart_js_config,
+                        # TODO: Remove this once we're handling metrics in the frontend via query
                         "metrics": metrics,
+                        "query": QueryParameters(
+                            metrics=metrics,
+                            group_by=group_by or [],
+                            limit=limit,
+                            order_by=order_by or [],
+                            where=where or [],
+                        ).model_dump(),
                     }
                 ),
             }

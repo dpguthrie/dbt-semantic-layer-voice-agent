@@ -94,6 +94,7 @@ class SemanticLayerVectorStore:
 
         metric_docs = []
         dimension_docs = []
+        seen_dimensions = set()  # Track dimensions by name using a set
 
         for metric in metrics:
             metric_model = VectorStoreMetric(
@@ -111,6 +112,10 @@ class SemanticLayerVectorStore:
             )
 
             for dimension in metric.dimensions:
+                # Skip if we've already seen this dimension name
+                if dimension.name in seen_dimensions:
+                    continue
+
                 dimension_model = VectorStoreDimension(
                     name=dimension.name,
                     dimension_type=dimension.type,
@@ -126,6 +131,8 @@ class SemanticLayerVectorStore:
                         page_content=dimension_model.page_content, metadata=metadata
                     )
                 )
+                # Add dimension name to set of seen dimensions
+                seen_dimensions.add(dimension.name)
 
         # Recreate collections with new documents
         self.metric_store = Chroma(
