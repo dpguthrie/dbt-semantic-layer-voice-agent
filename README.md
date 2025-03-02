@@ -2,12 +2,18 @@
 
 A real-time voice and text interaction application that helps users analyze data using a semantic layer. This application enables natural language queries to explore metrics and dimensions, with support for both voice and text-based interactions.
 
+![Application Picture](assets/application.png)
+
 ## Features
 
 - Natural language querying of semantic layer metrics and dimensions
 - Real-time voice input processing using OpenAI's Real-time Voice API
 - WebSocket-based real-time communication
 - Vector store-based semantic search for metrics and dimensions
+- Interactive data visualization with charts
+- Conversation persistence and management
+- Contextual querying with conversation-level filters and preferences
+- Data refresh capabilities for real-time updates
 
 ## Architecture
 
@@ -15,6 +21,10 @@ The application consists of:
 - `server/`: Python backend using Starlette, LangChain, and dbt Semantic Layer
 - Vector store for efficient metric and dimension discovery
 - WebSocket-based real-time communication layer
+- Chart visualization using Chart.js
+- SQLite-based conversation and message storage
+
+![Application Architecture](assets/diagram.png)
 
 ## Prerequisites
 
@@ -77,13 +87,27 @@ The backend is built using:
 - dbt Semantic Layer for data access
 - Chroma for vector storage
 - WebSockets for real-time communication
+- SQLite for conversation storage
 
 Key files:
 - `server/src/langchain_openai_voice/__init__.py`: Core voice agent implementation
 - `server/src/server/app.py`: Starlette server implementation
 - `server/src/server/tools.py`: Semantic layer tool implementations
 - `server/src/server/vectorstore.py`: Vector store for metric/dimension discovery
+- `server/src/server/storage.py`: Conversation and message persistence
+- `server/src/server/chart_models.py`: Chart generation and configuration
 - `server/src/server/prompt.py`: Example queries and agent instructions
+
+### Conversation Context
+
+The application supports setting conversation-level context that persists across all queries within a conversation. This allows users to:
+
+- Set default filters (e.g., "Filter all results to 2023")
+- Specify default ordering (e.g., "Always order in ascending")
+- Filter by specific dimensions (e.g., "Only include the Automobile market segment")
+- Require specific metrics in all queries (e.g., "Always include revenue and profit")
+
+This context is intelligently applied to every query in the conversation, removing the need to repeatedly specify the same filters or preferences.
 
 ### Query Examples
 
@@ -93,6 +117,10 @@ The system supports natural language queries like:
 - "Who are our top 10 salespeople by revenue?"
 - "Show me revenue by region for US customers"
 - "What's our daily revenue trend for the past 30 days?"
+
+With context applied, simple queries automatically inherit the context settings:
+- Context: "Filter to Q4-2023" + Query: "Show me revenue" = Revenue filtered to Q4 2023
+- Context: "Only US customers" + Query: "Top regions by profit" = Top US regions by profit
 
 ## Contributing
 
