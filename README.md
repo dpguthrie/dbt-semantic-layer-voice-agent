@@ -2,7 +2,7 @@
 
 A real-time voice and text interaction application that helps users analyze data using a semantic layer. This application enables natural language queries to explore metrics and dimensions, with support for both voice and text-based interactions.
 
-![Application Picture](assets/application.png)
+https://www.loom.com/share/4804ce177dc24543858e4c5dfcd5600d?sid=b673ec1c-1c7d-4e6a-9d69-74ba4f5c49b5
 
 ## Features
 
