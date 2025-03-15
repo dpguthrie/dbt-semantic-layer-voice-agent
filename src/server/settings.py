@@ -26,10 +26,7 @@ class Settings(BaseSettings):
 
     sl: SemanticLayerSettings
     vector_store_path: str = "./chroma_db"
-    langsmith_tracing: bool = False
-    langsmith_endpoint: str = "https://api.smith.langchain.com"
-    langsmith_api_key: str = ""
-    langsmith_project: str = "semantic-layer-voice-agent"
+    braintrust_api_key: str
     openai_api_key: str = ""
 
 
