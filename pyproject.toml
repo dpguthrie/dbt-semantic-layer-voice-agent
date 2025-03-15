@@ -15,7 +15,7 @@ dependencies = [
     "langchain-openai",
     "langchain-chroma",
     "pandas",
-    "langsmith",
+    "braintrust[all]",
 ]
 
 [tool.uv]
