@@ -1,4 +1,5 @@
 version = 1
+revision = 1
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version == '3.11.*'",
@@ -3304,6 +3305,7 @@ dependencies = [
     { name = "langchain-community" },
     { name = "langchain-openai" },
     { name = "langgraph" },
+    { name = "openai" },
     { name = "pandas" },
     { name = "pydantic-settings" },
     { name = "starlette" },
@@ -3330,6 +3332,7 @@ requires-dist = [
     { name = "langchain-community", specifier = ">=0.3.1" },
     { name = "langchain-openai" },
     { name = "langgraph", specifier = ">=0.2.32" },
+    { name = "openai" },
     { name = "pandas" },
     { name = "pydantic-settings", specifier = ">=2.2.0" },
     { name = "starlette", specifier = ">=0.39.2" },

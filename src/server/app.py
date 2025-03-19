@@ -12,17 +12,22 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
 
+import braintrust
 from langchain_openai_voice import VoiceToTextReactAgent
 from server.chart_models import create_chart
 from server.client import get_client
 from server.models import Message
 from server.prompt import INSTRUCTIONS
+from server.settings import settings
 from server.storage import ConversationStorage
 from server.tools import create_tools
 from server.utils import DateTimeEncoder, format_pyarrow_table, websocket_stream
 from server.vectorstore import SemanticLayerVectorStore
 
 logger = logging.getLogger(__name__)
+
+
+bt_logger = braintrust.init_logger(project_name=settings.braintrust_project_name)
 
 
 class JSONResponse(Response):
@@ -287,7 +292,7 @@ async def websocket_endpoint(websocket: WebSocket):
         )
 
     browser_receive_stream = websocket_stream(websocket)
-    tools = create_tools(websocket.app)
+    tools = create_tools(websocket.app.state.client, websocket.app.state.vector_store)
 
     agent = VoiceToTextReactAgent(
         model="gpt-4o-realtime-preview",

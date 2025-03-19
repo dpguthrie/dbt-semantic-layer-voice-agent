@@ -7,12 +7,12 @@ from typing import Any
 from langchain_community.tools import TavilySearchResults
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
-from starlette.applications import Starlette
 
+from braintrust import traced
 from server.chart_models import create_chart
-from server.models import (
-    QueryParameters,
-)
+from server.client import AsyncSemanticLayerClient
+from server.models import QueryParameters
+from server.vectorstore import SemanticLayerVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +37,18 @@ class SemanticLayerSearchTool(BaseTool):
     Use this tool when you need to find metrics and dimensions that match what the user is asking about.
     """
     args_schema: type[BaseModel] = SemanticLayerSearchInput
-    app: Starlette
+    vector_store: SemanticLayerVectorStore = Field(
+        description="The vector store for semantic layer metadata search"
+    )
+
+    def __init__(self, vector_store: SemanticLayerVectorStore, **kwargs):
+        super().__init__(vector_store=vector_store, **kwargs)
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         """Synchronous run is not supported, use arun instead."""
         raise NotImplementedError("This tool only supports async operations")
 
+    @traced(name="semantic_layer_metadata", type="tool")
     async def _arun(
         self, query: str, k_metrics: int = 5, k_dimensions: int = 5
     ) -> dict[str, Any]:
@@ -54,7 +60,7 @@ class SemanticLayerSearchTool(BaseTool):
             k_metrics = max(1, min(k_metrics, 5))  # Limit between 1 and 20
             k_dimensions = max(1, min(k_dimensions, 5))
 
-            result = await self.app.state.vector_store.retrieve(
+            result = await self.vector_store.retrieve(
                 query=query, k_metrics=k_metrics, k_dimensions=k_dimensions
             )
 
@@ -85,8 +91,13 @@ class SemanticLayerQueryTool(BaseTool):
     Do not make up metrics or dimensions, only use those returned by the semantic_layer_metadata tool.
     """
     args_schema: type[BaseModel] = QueryParameters
-    app: Starlette
+    client: AsyncSemanticLayerClient = Field(
+        description="The semantic layer client for executing queries"
+    )
     return_direct: bool = True  # This ensures the response goes directly to the model
+
+    def __init__(self, client: AsyncSemanticLayerClient, **kwargs):
+        super().__init__(client=client, **kwargs)
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         """Synchronous run is not supported, use arun instead."""
@@ -108,6 +119,7 @@ class SemanticLayerQueryTool(BaseTool):
             formatted_data[key] = formatted_values
         return formatted_data
 
+    @traced(name="semantic_layer_query", type="tool")
     async def _arun(
         self,
         metrics: list[str],
@@ -131,14 +143,14 @@ class SemanticLayerQueryTool(BaseTool):
 
             # Execute query and get SQL concurrently
             table, sql = await asyncio.gather(
-                self.app.state.client.query(
+                self.client.query(
                     metrics=metrics,
                     group_by=group_by,
                     limit=limit,
                     order_by=order_by,
                     where=where,
                 ),
-                self.app.state.client.compile_sql(
+                self.client.compile_sql(
                     metrics=metrics,
                     group_by=group_by,
                     limit=limit,
@@ -209,8 +221,10 @@ class SemanticLayerQueryTool(BaseTool):
             return {"error": str(e), "type": "error"}
 
 
-def create_tools(app: Starlette) -> Sequence[BaseTool]:
-    """Create the tools with access to application state."""
+def create_tools(
+    client: AsyncSemanticLayerClient, vector_store: SemanticLayerVectorStore
+) -> Sequence[BaseTool]:
+    """Create the tools with their required dependencies."""
     tavily_tool = TavilySearchResults(
         max_results=5,
         include_answer=True,
@@ -221,7 +235,7 @@ def create_tools(app: Starlette) -> Sequence[BaseTool]:
     )
 
     return [
-        SemanticLayerSearchTool(app=app),
-        SemanticLayerQueryTool(app=app),
+        SemanticLayerSearchTool(vector_store=vector_store),
+        SemanticLayerQueryTool(client=client),
         tavily_tool,
     ]

@@ -1,9 +1,12 @@
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from json import JSONEncoder
 
 import pyarrow as pa
-from starlette.websockets import WebSocket
+from starlette.websockets import WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
 
 
 class DateTimeEncoder(JSONEncoder):
@@ -16,12 +19,23 @@ class DateTimeEncoder(JSONEncoder):
 
 
 async def websocket_stream(websocket: WebSocket) -> AsyncIterator[str]:
-    """Create an async iterator from a WebSocket connection."""
+    """Create an async iterator from a WebSocket connection.
+
+    This function will:
+    1. Yield messages from the websocket until it's closed
+    2. Handle WebSocketDisconnect gracefully (this is expected when user stops recording)
+    3. Log other exceptions for debugging
+    """
     try:
         while True:
             yield await websocket.receive_text()
-    except Exception:
-        pass
+    except WebSocketDisconnect as e:
+        logger.info(f"WebSocket disconnected by client: {e.reason}")
+
+        return
+    except Exception as e:
+        logger.error(f"Unexpected error in websocket_stream: {e}")
+        raise
 
 
 def format_pyarrow_table(table: pa.Table) -> dict:
