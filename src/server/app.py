@@ -15,7 +15,6 @@ from starlette.websockets import WebSocket
 import braintrust
 from langchain_openai_voice import VoiceToTextReactAgent
 from server.chart_models import create_chart
-from server.client import get_client
 from server.models import Message
 from server.prompt import INSTRUCTIONS
 from server.settings import settings
@@ -27,7 +26,7 @@ from server.vectorstore import SemanticLayerVectorStore
 logger = logging.getLogger(__name__)
 
 
-bt_logger = braintrust.init_logger(project_name=settings.braintrust_project_name)
+bt_logger = braintrust.init_logger(project=settings.braintrust_project_name)
 
 
 class JSONResponse(Response):
@@ -46,25 +45,16 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     try:
         logger.info("Initializing application state...")
 
-        # Initialize the client
-        client = get_client()
-        app.state.client = client
-        logger.info("Semantic Layer client initialized")
-
         # Initialize conversation storage
         app.state.storage = ConversationStorage()
         logger.info("Conversation storage initialized")
 
-        # Start a global session for the semantic layer client
-        async with client.session():
-            logger.info("Semantic Layer session started")
+        # Create and populate vector store
+        vector_store = SemanticLayerVectorStore()
+        await vector_store.refresh_stores()
+        logger.info("Vector store created and refreshed")
 
-            # Create vector store and refresh metadata
-            app.state.vector_store = SemanticLayerVectorStore(client=client)
-            await app.state.vector_store.refresh_stores()
-            logger.info("Vector store created and refreshed")
-
-            yield
+        yield
 
     except Exception as e:
         logger.error(f"Failed to initialize application: {e}")
@@ -72,26 +62,15 @@ async def lifespan(app: Starlette) -> AsyncIterator[None]:
     finally:
         logger.info("Cleaning up application state...")
         # Clean up vector store
-        if hasattr(app.state, "vector_store"):
-            try:
-                # Ensure we await any async cleanup
-                if app.state.vector_store.metric_store:
-                    await app.state.vector_store.metric_store.delete()
-                if app.state.vector_store.dimension_store:
-                    await app.state.vector_store.dimension_store.delete()
-                app.state.vector_store = None
-                logger.info("Vector store cleanup completed")
-            except Exception as e:
-                logger.error(f"Error cleaning up vector store: {e}")
-
-        # Clean up client
-        if hasattr(app.state, "client"):
-            try:
-                await app.state.client.close()
-                app.state.client = None
-                logger.info("Semantic Layer client cleanup completed")
-            except Exception as e:
-                logger.error(f"Error cleaning up client: {e}")
+        try:
+            vector_store = SemanticLayerVectorStore()
+            if vector_store.metric_store:
+                vector_store.metric_store.delete_collection()
+            if vector_store.dimension_store:
+                vector_store.dimension_store.delete_collection()
+            logger.info("Vector store cleanup completed")
+        except Exception as e:
+            logger.error(f"Error cleaning up vector store: {e}")
 
         logger.info("Application cleanup completed")
 
@@ -292,7 +271,9 @@ async def websocket_endpoint(websocket: WebSocket):
         )
 
     browser_receive_stream = websocket_stream(websocket)
-    tools = create_tools(websocket.app.state.client, websocket.app.state.vector_store)
+
+    # Create tools for this connection
+    tools = create_tools()
 
     agent = VoiceToTextReactAgent(
         model="gpt-4o-realtime-preview",

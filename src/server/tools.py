@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from braintrust import traced
 from server.chart_models import create_chart
-from server.client import AsyncSemanticLayerClient
+from server.client import get_client
 from server.models import QueryParameters
 from server.vectorstore import SemanticLayerVectorStore
 
@@ -91,13 +91,7 @@ class SemanticLayerQueryTool(BaseTool):
     Do not make up metrics or dimensions, only use those returned by the semantic_layer_metadata tool.
     """
     args_schema: type[BaseModel] = QueryParameters
-    client: AsyncSemanticLayerClient = Field(
-        description="The semantic layer client for executing queries"
-    )
     return_direct: bool = True  # This ensures the response goes directly to the model
-
-    def __init__(self, client: AsyncSemanticLayerClient, **kwargs):
-        super().__init__(client=client, **kwargs)
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         """Synchronous run is not supported, use arun instead."""
@@ -130,6 +124,9 @@ class SemanticLayerQueryTool(BaseTool):
     ) -> dict[str, Any]:
         """Query the semantic layer to return data requested by the user."""
         try:
+            # Create a fresh client for each query
+            client = get_client()
+
             # Ensure defaults for all fields
             group_by = group_by or []
             order_by = order_by or []
@@ -141,90 +138,94 @@ class SemanticLayerQueryTool(BaseTool):
                 f"order_by: {order_by}, where: {where}"
             )
 
-            # Execute query and get SQL concurrently
-            table, sql = await asyncio.gather(
-                self.client.query(
-                    metrics=metrics,
-                    group_by=group_by,
-                    limit=limit,
-                    order_by=order_by,
-                    where=where,
-                ),
-                self.client.compile_sql(
-                    metrics=metrics,
-                    group_by=group_by,
-                    limit=limit,
-                    order_by=order_by,
-                    where=where,
-                ),
-            )
+            async with client.session():
+                # Execute query and get SQL concurrently
+                table, sql = await asyncio.gather(
+                    client.query(
+                        metrics=metrics,
+                        group_by=group_by,
+                        limit=limit,
+                        order_by=order_by,
+                        where=where,
+                    ),
+                    client.compile_sql(
+                        metrics=metrics,
+                        group_by=group_by,
+                        limit=limit,
+                        order_by=order_by,
+                        where=where,
+                    ),
+                )
 
-            logger.debug("Query completed successfully")
+                logger.debug("Query completed successfully")
 
-            chart_js_config = None
-            try:
-                chart = create_chart(metrics=metrics, dimensions=group_by, table=table)
-                chart_js_config = chart.get_config()
-            except Exception as e:
-                logger.error(f"Error creating chart config: {e}")
-                # Provide a fallback chart configuration that shows an error message
-                chart_js_config = {
-                    "type": "bar",  # Use simple bar chart as fallback
-                    "data": {"labels": [], "datasets": []},
-                    "options": {
-                        "responsive": True,
-                        "plugins": {
-                            "title": {
-                                "display": True,
-                                "text": "Unable to create chart visualization",
-                                "color": "#94EAD4",  # Using one of our theme colors
-                                "font": {"size": 16},
-                            },
-                            "subtitle": {
-                                "display": True,
-                                "text": str(e),
-                                "color": "#666",
-                                "font": {"size": 14},
+                chart_js_config = None
+                try:
+                    chart = create_chart(
+                        metrics=metrics, dimensions=group_by, table=table
+                    )
+                    chart_js_config = chart.get_config()
+                except Exception as e:
+                    logger.error(f"Error creating chart config: {e}")
+                    # Provide a fallback chart configuration that shows an error message
+                    chart_js_config = {
+                        "type": "bar",  # Use simple bar chart as fallback
+                        "data": {"labels": [], "datasets": []},
+                        "options": {
+                            "responsive": True,
+                            "plugins": {
+                                "title": {
+                                    "display": True,
+                                    "text": "Unable to create chart visualization",
+                                    "color": "#94EAD4",  # Using one of our theme colors
+                                    "font": {"size": 16},
+                                },
+                                "subtitle": {
+                                    "display": True,
+                                    "text": str(e),
+                                    "color": "#666",
+                                    "font": {"size": 14},
+                                },
                             },
                         },
-                    },
-                }
-
-            # Convert table to dict and format the data
-            data_dict = table.to_pydict()
-            formatted_data = self._format_data(data_dict)
-
-            # Format the response for the frontend - ensure it's wrapped correctly for direct return
-            return {
-                "type": "function_call_output",  # This matches what the frontend expects
-                "output": json.dumps(
-                    {
-                        "type": "query_result",
-                        "sql": sql,
-                        "data": formatted_data,
-                        "chart_config": chart_js_config,
-                        # TODO: Remove this once we're handling metrics in the frontend via query
-                        "metrics": metrics,
-                        "query": QueryParameters(
-                            metrics=metrics,
-                            group_by=group_by or [],
-                            limit=limit,
-                            order_by=order_by or [],
-                            where=where or [],
-                        ).model_dump(),
                     }
-                ),
-            }
+
+                # Convert table to dict and format the data
+                data_dict = table.to_pydict()
+                formatted_data = self._format_data(data_dict)
+
+                # Format the response for the frontend - ensure it's wrapped correctly for direct return
+                return {
+                    "type": "function_call_output",  # This matches what the frontend expects
+                    "output": json.dumps(
+                        {
+                            "type": "query_result",
+                            "sql": sql,
+                            "data": formatted_data,
+                            "chart_config": chart_js_config,
+                            # TODO: Remove this once we're handling metrics in the frontend via query
+                            "metrics": metrics,
+                            "query": QueryParameters(
+                                metrics=metrics,
+                                group_by=group_by or [],
+                                limit=limit,
+                                order_by=order_by or [],
+                                where=where or [],
+                            ).model_dump(),
+                        }
+                    ),
+                }
 
         except Exception as e:
             logger.error(f"Error in semantic layer query: {e}")
             return {"error": str(e), "type": "error"}
 
 
-def create_tools(
-    client: AsyncSemanticLayerClient, vector_store: SemanticLayerVectorStore
-) -> Sequence[BaseTool]:
+def create_tools() -> Sequence[BaseTool]:
     """Create the tools with their required dependencies."""
+    # Create vector store for this connection
+    vector_store = SemanticLayerVectorStore()
+
     tavily_tool = TavilySearchResults(
         max_results=5,
         include_answer=True,
@@ -236,6 +237,6 @@ def create_tools(
 
     return [
         SemanticLayerSearchTool(vector_store=vector_store),
-        SemanticLayerQueryTool(client=client),
+        SemanticLayerQueryTool(),
         tavily_tool,
     ]

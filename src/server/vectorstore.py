@@ -1,9 +1,9 @@
-from dbtsl.asyncio import AsyncSemanticLayerClient
 from dbtsl.models import Metric
 from langchain.schema import Document
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 
+from server.client import get_client
 from server.models import (
     RetrievalDimension,
     RetrievalMetric,
@@ -19,8 +19,7 @@ class SemanticLayerVectorStore:
 
     COLLECTION_NAMES = ["metrics", "dimensions"]
 
-    def __init__(self, client: AsyncSemanticLayerClient):
-        self.client = client
+    def __init__(self):
         self.embeddings = OpenAIEmbeddings()
         self.persist_directory = settings.vector_store_path
         self.metric_store = Chroma(
@@ -33,9 +32,11 @@ class SemanticLayerVectorStore:
             embedding_function=self.embeddings,
             persist_directory=f"{self.persist_directory}/dimensions",
         )
+        self.client = get_client()
 
     async def get_metrics(self) -> list[Metric]:
-        return await self.client.get_metrics()
+        async with self.client.session():
+            return await self.client.get_metrics()
 
     async def retrieve(
         self, query: str, k_metrics: int = 5, k_dimensions: int = 5
@@ -87,66 +88,67 @@ class SemanticLayerVectorStore:
 
     async def refresh_stores(self) -> None:
         """Refresh the vector stores with latest metadata from the semantic layer."""
-        metrics = await self.client.metrics()
+        async with self.client.session():
+            metrics = await self.client.metrics()
 
-        self.metric_store.delete_collection()
-        self.dimension_store.delete_collection()
+            self.metric_store.delete_collection()
+            self.dimension_store.delete_collection()
 
-        metric_docs = []
-        dimension_docs = []
-        seen_dimensions = set()  # Track dimensions by name using a set
+            metric_docs = []
+            dimension_docs = []
+            seen_dimensions = set()  # Track dimensions by name using a set
 
-        for metric in metrics:
-            metric_model = VectorStoreMetric(
-                name=metric.name,
-                label=metric.label,
-                description=metric.description,
-                metric_type=metric.type,
-                requires_metric_time=metric.requires_metric_time,
-                dimensions=", ".join([d.name for d in metric.dimensions]),
-                queryable_granularities=", ".join(metric.queryable_granularities),
-            )
-            metadata = metric_model.model_dump()
-            metric_docs.append(
-                Document(page_content=metric_model.page_content, metadata=metadata)
-            )
-
-            for dimension in metric.dimensions:
-                # Skip if we've already seen this dimension name
-                if dimension.name in seen_dimensions:
-                    continue
-
-                dimension_model = VectorStoreDimension(
-                    name=dimension.name,
-                    dimension_type=dimension.type,
-                    qualified_name=dimension.qualified_name,
-                    metric_id=metric.name,
-                    label=dimension.label,
-                    description=dimension.description,
-                    expr=dimension.expr,
+            for metric in metrics:
+                metric_model = VectorStoreMetric(
+                    name=metric.name,
+                    label=metric.label,
+                    description=metric.description,
+                    metric_type=metric.type,
+                    requires_metric_time=metric.requires_metric_time,
+                    dimensions=", ".join([d.name for d in metric.dimensions]),
+                    queryable_granularities=", ".join(metric.queryable_granularities),
                 )
-                metadata = dimension_model.model_dump()
-                dimension_docs.append(
-                    Document(
-                        page_content=dimension_model.page_content, metadata=metadata
+                metadata = metric_model.model_dump()
+                metric_docs.append(
+                    Document(page_content=metric_model.page_content, metadata=metadata)
+                )
+
+                for dimension in metric.dimensions:
+                    # Skip if we've already seen this dimension name
+                    if dimension.name in seen_dimensions:
+                        continue
+
+                    dimension_model = VectorStoreDimension(
+                        name=dimension.name,
+                        dimension_type=dimension.type,
+                        qualified_name=dimension.qualified_name,
+                        metric_id=metric.name,
+                        label=dimension.label,
+                        description=dimension.description,
+                        expr=dimension.expr,
                     )
-                )
-                # Add dimension name to set of seen dimensions
-                seen_dimensions.add(dimension.name)
+                    metadata = dimension_model.model_dump()
+                    dimension_docs.append(
+                        Document(
+                            page_content=dimension_model.page_content, metadata=metadata
+                        )
+                    )
+                    # Add dimension name to set of seen dimensions
+                    seen_dimensions.add(dimension.name)
 
-        # Recreate collections with new documents
-        self.metric_store = Chroma(
-            collection_name="metrics",
-            embedding_function=self.embeddings,
-            persist_directory=f"{self.persist_directory}/metrics",
-        )
-        self.dimension_store = Chroma(
-            collection_name="dimensions",
-            embedding_function=self.embeddings,
-            persist_directory=f"{self.persist_directory}/dimensions",
-        )
+            # Recreate collections with new documents
+            self.metric_store = Chroma(
+                collection_name="metrics",
+                embedding_function=self.embeddings,
+                persist_directory=f"{self.persist_directory}/metrics",
+            )
+            self.dimension_store = Chroma(
+                collection_name="dimensions",
+                embedding_function=self.embeddings,
+                persist_directory=f"{self.persist_directory}/dimensions",
+            )
 
-        if metric_docs:
-            self.metric_store.add_documents(metric_docs)
-        if dimension_docs:
-            self.dimension_store.add_documents(dimension_docs)
+            if metric_docs:
+                self.metric_store.add_documents(metric_docs)
+            if dimension_docs:
+                self.dimension_store.add_documents(dimension_docs)

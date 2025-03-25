@@ -235,74 +235,89 @@ class VoiceToTextReactAgent(BaseModel):
                     },
                 }
             )
-            async for stream_key, data_raw in amerge(
-                input_mic=input_stream,
-                output_speaker=model_receive_stream,
-                tool_outputs=tool_executor.output_iterator(),
-            ):
-                try:
-                    data = (
-                        json.loads(data_raw) if isinstance(data_raw, str) else data_raw
-                    )
-                except json.JSONDecodeError:
-                    print("error decoding data:", data_raw)
-                    continue
+            try:
+                async for stream_key, data_raw in amerge(
+                    input_mic=input_stream,
+                    output_speaker=model_receive_stream,
+                    tool_outputs=tool_executor.output_iterator(),
+                ):
+                    try:
+                        data = (
+                            json.loads(data_raw)
+                            if isinstance(data_raw, str)
+                            else data_raw
+                        )
+                    except json.JSONDecodeError:
+                        print("error decoding data:", data_raw)
+                        continue
 
-                if stream_key == "input_mic":
-                    await model_send(data)
-                elif stream_key == "tool_outputs":
-                    print("tool output", data)
-                    if data.get("type") == "conversation.item.create":
-                        # Regular tool output - send to model
+                    if stream_key == "input_mic":
                         await model_send(data)
-                        await model_send({"type": "response.create", "response": {}})
-                    else:
-                        # Direct tool output - send straight to client
-                        await send_output_chunk(json.dumps(data))
-                elif stream_key == "output_speaker":
-                    t = data["type"]
-                    if t == "response.audio.delta":
-                        # Ignore audio deltas, we don't need them
-                        pass
-                    elif t == "response.audio_transcript.done":
-                        print("model:", data["transcript"])
-                        # Send the transcript to the frontend
-                        await send_output_chunk(
-                            json.dumps(
-                                {
-                                    "type": "assistant.response",
-                                    "text": data["transcript"],
-                                }
+                    elif stream_key == "tool_outputs":
+                        print("tool output", data)
+                        if data.get("type") == "conversation.item.create":
+                            # Regular tool output - send to model
+                            await model_send(data)
+                            await model_send(
+                                {"type": "response.create", "response": {}}
                             )
-                        )
-                    elif t == "error":
-                        print("error:", data)
-                        await send_output_chunk(
-                            json.dumps(
-                                {
-                                    "type": "error",
-                                    "content": str(data.get("error", "Unknown error")),
-                                }
+                        else:
+                            # Direct tool output - send straight to client
+                            await send_output_chunk(json.dumps(data))
+                    elif stream_key == "output_speaker":
+                        t = data["type"]
+                        if t == "response.audio.delta":
+                            # Ignore audio deltas, we don't need them
+                            pass
+                        elif t == "response.audio_transcript.done":
+                            print("model:", data["transcript"])
+                            # Send the transcript to the frontend
+                            await send_output_chunk(
+                                json.dumps(
+                                    {
+                                        "type": "assistant.response",
+                                        "text": data["transcript"],
+                                    }
+                                )
                             )
-                        )
-                    elif t == "response.function_call_arguments.done":
-                        print("tool call", data)
-                        await tool_executor.add_tool_call(data)
-                    elif t == "conversation.item.input_audio_transcription.completed":
-                        print("user:", data["transcript"])
-                        # Send the transcribed text to the client
-                        await send_output_chunk(
-                            json.dumps(
-                                {
-                                    "type": "user.input",
-                                    "text": data["transcript"],
-                                }
+                        elif t == "error":
+                            print("error:", data)
+                            await send_output_chunk(
+                                json.dumps(
+                                    {
+                                        "type": "error",
+                                        "content": str(
+                                            data.get("error", "Unknown error")
+                                        ),
+                                    }
+                                )
                             )
-                        )
-                    elif t in EVENTS_TO_IGNORE:
-                        pass
-                    else:
-                        print(t)
+                        elif t == "response.function_call_arguments.done":
+                            print("tool call", data)
+                            await tool_executor.add_tool_call(data)
+                        elif (
+                            t == "conversation.item.input_audio_transcription.completed"
+                        ):
+                            print("user:", data["transcript"])
+                            # Send the transcribed text to the client
+                            await send_output_chunk(
+                                json.dumps(
+                                    {
+                                        "type": "user.input",
+                                        "text": data["transcript"],
+                                    }
+                                )
+                            )
+                        elif t in EVENTS_TO_IGNORE:
+                            pass
+                        else:
+                            print(t)
+            except StopAsyncIteration:
+                # This is expected when the websocket closes
+                print("[DEBUG] Input stream completed, closing connection")
+            except Exception as e:
+                print(f"[DEBUG] Error in stream processing: {str(e)}")
+                raise
 
 
 __all__ = ["OpenAIVoiceReactAgent", "VoiceToTextReactAgent"]

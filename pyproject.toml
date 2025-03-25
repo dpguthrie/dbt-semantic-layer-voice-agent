@@ -17,6 +17,7 @@ dependencies = [
     "pandas",
     "braintrust[all]",
     "openai",
+    "autoevals",
 ]
 
 [tool.uv]

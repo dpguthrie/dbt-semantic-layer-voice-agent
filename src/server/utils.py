@@ -23,7 +23,7 @@ async def websocket_stream(websocket: WebSocket) -> AsyncIterator[str]:
 
     This function will:
     1. Yield messages from the websocket until it's closed
-    2. Handle WebSocketDisconnect gracefully (this is expected when user stops recording)
+    2. Handle WebSocketDisconnect by raising StopAsyncIteration (expected when user stops recording)
     3. Log other exceptions for debugging
     """
     try:
@@ -31,8 +31,7 @@ async def websocket_stream(websocket: WebSocket) -> AsyncIterator[str]:
             yield await websocket.receive_text()
     except WebSocketDisconnect as e:
         logger.info(f"WebSocket disconnected by client: {e.reason}")
-
-        return
+        raise StopAsyncIteration("WebSocket disconnected by client")
     except Exception as e:
         logger.error(f"Unexpected error in websocket_stream: {e}")
         raise
