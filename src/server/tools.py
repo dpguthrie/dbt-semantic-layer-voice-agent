@@ -1,17 +1,24 @@
 import asyncio
-import json
 import logging
 from collections.abc import Sequence
 from typing import Any
 
 from langchain_community.tools import TavilySearchResults
 from langchain_core.tools import BaseTool
+from langchain_openai import OpenAIEmbeddings
+from pinecone import PineconeAsyncio
 from pydantic import BaseModel, Field
 
 from braintrust import traced
 from server.chart_models import create_chart
 from server.client import get_client
-from server.models import QueryParameters
+from server.models import (
+    QueryParameters,
+    RetrievalDimension,
+    RetrievalMetric,
+    RetrievalResult,
+)
+from server.settings import settings
 from server.vectorstore import SemanticLayerVectorStore
 
 logger = logging.getLogger(__name__)
@@ -157,68 +164,168 @@ class SemanticLayerQueryTool(BaseTool):
                     ),
                 )
 
-                logger.debug("Query completed successfully")
+            logger.debug("Query completed successfully")
 
-                chart_js_config = None
-                try:
-                    chart = create_chart(
-                        metrics=metrics, dimensions=group_by, table=table
-                    )
-                    chart_js_config = chart.get_config()
-                except Exception as e:
-                    logger.error(f"Error creating chart config: {e}")
-                    # Provide a fallback chart configuration that shows an error message
-                    chart_js_config = {
-                        "type": "bar",  # Use simple bar chart as fallback
-                        "data": {"labels": [], "datasets": []},
-                        "options": {
-                            "responsive": True,
-                            "plugins": {
-                                "title": {
-                                    "display": True,
-                                    "text": "Unable to create chart visualization",
-                                    "color": "#94EAD4",  # Using one of our theme colors
-                                    "font": {"size": 16},
-                                },
-                                "subtitle": {
-                                    "display": True,
-                                    "text": str(e),
-                                    "color": "#666",
-                                    "font": {"size": 14},
-                                },
+            chart_js_config = None
+            try:
+                chart = create_chart(metrics=metrics, dimensions=group_by, table=table)
+                chart_js_config = chart.get_config()
+            except Exception as e:
+                logger.error(f"Error creating chart config: {e}")
+                chart_js_config = {
+                    "type": "bar",
+                    "data": {"labels": [], "datasets": []},
+                    "options": {
+                        "responsive": True,
+                        "plugins": {
+                            "title": {
+                                "display": True,
+                                "text": "Unable to create chart visualization",
+                                "color": "#94EAD4",
+                                "font": {"size": 16},
+                            },
+                            "subtitle": {
+                                "display": True,
+                                "text": str(e),
+                                "color": "#666",
+                                "font": {"size": 14},
                             },
                         },
-                    }
-
-                # Convert table to dict and format the data
-                data_dict = table.to_pydict()
-                formatted_data = self._format_data(data_dict)
-
-                # Format the response for the frontend - ensure it's wrapped correctly for direct return
-                return {
-                    "type": "function_call_output",  # This matches what the frontend expects
-                    "output": json.dumps(
-                        {
-                            "type": "query_result",
-                            "sql": sql,
-                            "data": formatted_data,
-                            "chart_config": chart_js_config,
-                            # TODO: Remove this once we're handling metrics in the frontend via query
-                            "metrics": metrics,
-                            "query": QueryParameters(
-                                metrics=metrics,
-                                group_by=group_by or [],
-                                limit=limit,
-                                order_by=order_by or [],
-                                where=where or [],
-                            ).model_dump(),
-                        }
-                    ),
+                    },
                 }
+
+            # Convert table to dict and format the data
+            data_dict = table.to_pydict()
+            formatted_data = self._format_data(data_dict)
+
+            return {
+                "type": "function_call_output",
+                "output": {
+                    "type": "query_result",
+                    "sql": sql,
+                    "data": formatted_data,
+                    "chart_config": chart_js_config,
+                    "metrics": metrics,
+                    "query": QueryParameters(
+                        metrics=metrics,
+                        group_by=group_by or [],
+                        limit=limit,
+                        order_by=order_by or [],
+                        where=where or [],
+                    ).model_dump(),
+                },
+            }
 
         except Exception as e:
             logger.error(f"Error in semantic layer query: {e}")
             return {"error": str(e), "type": "error"}
+
+
+class PineconeSearchInput(BaseModel):
+    query: str = Field(
+        description="The natural language query to search for metrics and dimensions"
+    )
+    k_metrics: int = Field(
+        default=5, description="Number of metrics to retrieve (default: 5)"
+    )
+    k_dimensions: int = Field(
+        default=5,
+        description="Number of dimensions to retrieve per metric (default: 5)",
+    )
+
+
+class PineconeSearchTool(BaseTool):
+    name: str = "pinecone_semantic_search"
+    description: str = """
+    Search for relevant metrics and dimensions in the semantic layer based on a natural language query.
+    Use this tool when you need to find metrics and dimensions that match what the user is asking about.
+    """
+    args_schema: type[BaseModel] = PineconeSearchInput
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.embeddings = OpenAIEmbeddings()
+        self.pinecone = PineconeAsyncio(api_key=settings.pinecone_api_key)
+        self.metric_index = self.pinecone.Index(settings.pinecone_metric_index_name)
+        self.dimension_index = self.pinecone.Index(
+            settings.pinecone_dimension_index_name
+        )
+
+    def _run(self, *args: Any, **kwargs: Any) -> Any:
+        """Synchronous run is not supported, use arun instead."""
+        raise NotImplementedError("This tool only supports async operations")
+
+    @traced(name="pinecone_semantic_search", type="tool")
+    async def _arun(
+        self, query: str, k_metrics: int = 5, k_dimensions: int = 5
+    ) -> dict[str, Any]:
+        """Run the metric search using Pinecone."""
+        try:
+            logger.debug(f"Searching for metrics and dimensions with query: {query}")
+
+            # Validate k_metrics and k_dimensions are positive integers
+            k_metrics = max(1, min(k_metrics, 5))
+            k_dimensions = max(1, min(k_dimensions, 5))
+
+            # Generate query embedding
+            query_embedding = await self.embeddings.aembed_query(query)
+
+            # Search metrics
+            metric_results = await self.metric_index.query(
+                vector=query_embedding, top_k=k_metrics, include_metadata=True
+            )
+
+            # Convert metric results to RetrievalMetric objects
+            metrics = []
+            for match in metric_results.matches:
+                metrics.append(
+                    RetrievalMetric(
+                        name=match["metadata"]["name"],
+                        label=match["metadata"]["label"],
+                        description=match["metadata"]["description"],
+                        metric_type=match["metadata"]["metric_type"],
+                        requires_metric_time=match["metadata"]["requires_metric_time"],
+                    )
+                )
+
+            # Search dimensions
+            dimension_results = await self.dimension_index.query(
+                vector=query_embedding, top_k=k_dimensions, include_metadata=True
+            )
+
+            # Convert dimension results to RetrievalDimension objects
+            dimensions = []
+            for match in dimension_results.matches:
+                dimensions.append(
+                    RetrievalDimension(
+                        name=match["metadata"]["name"],
+                        label=match["metadata"]["label"],
+                        description=match["metadata"]["description"],
+                        metric_id=match["metadata"]["metric_id"],
+                    )
+                )
+
+            result = RetrievalResult(
+                metrics=metrics, dimensions=dimensions, query=query
+            )
+
+            logger.debug(
+                f"Found {len(metrics)} metrics and {len(dimensions)} dimensions"
+            )
+            return result.model_dump()
+
+        except Exception as e:
+            logger.error(f"Error in Pinecone semantic search: {e}")
+            return {"metrics": [], "dimensions": [], "query": query, "error": str(e)}
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if self.pinecone:
+            await self.pinecone.close()
 
 
 def create_tools() -> Sequence[BaseTool]:
@@ -236,7 +343,7 @@ def create_tools() -> Sequence[BaseTool]:
     )
 
     return [
-        SemanticLayerSearchTool(vector_store=vector_store),
+        PineconeSearchTool(),
         SemanticLayerQueryTool(),
         tavily_tool,
     ]

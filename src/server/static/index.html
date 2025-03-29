@@ -1728,7 +1728,7 @@
                             case "function_call_output":
                                 // Handle function call outputs
                                 try {
-                                    const result = JSON.parse(message.output);
+                                    const result = message.output;
                                     console.log('Function call output:', result);
                                     if (result.type === "query_result") {
                                         // It's a query result, display it

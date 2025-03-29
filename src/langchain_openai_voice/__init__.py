@@ -9,7 +9,7 @@ from langchain_core.utils import secret_from_env
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, PrivateAttr, SecretStr
 
-from braintrust import traced, wrap_openai
+from braintrust import init_logger, start_span, traced, wrap_openai
 from langchain_openai_voice.utils import amerge
 from server.settings import settings
 
@@ -27,15 +27,14 @@ EVENTS_TO_IGNORE = {
     "response.audio.done",
     "session.created",
     "session.updated",
-    "response.done",
     "response.output_item.done",
 }
 
+bt_logger = init_logger(project=settings.braintrust_project_name)
 client = wrap_openai(AsyncOpenAI(api_key=settings.openai_api_key))
 
 
 @asynccontextmanager
-@traced(type="llm", name="OpenAI Realtime Websocket Opened")
 async def connect() -> AsyncGenerator[
     tuple[
         Callable[[dict[str, Any] | str], Coroutine[Any, Any, None]],
@@ -54,26 +53,26 @@ async def connect() -> AsyncGenerator[
         try:
 
             async def send_event(event: dict[str, Any] | str) -> None:
-                # Always ensure we're sending a dictionary
-                if isinstance(event, str):
-                    try:
-                        event = json.loads(event)
-                    except json.JSONDecodeError:
-                        # If it's not valid JSON, wrap it in a message
-                        event = {"type": "message", "content": event}
                 await connection.send(event)
 
             async def event_stream() -> AsyncIterator[dict[str, Any]]:
-                async for raw_event in connection:
-                    if isinstance(raw_event, BaseModel):
-                        yield raw_event.model_dump()
-                    else:
-                        yield json.loads(raw_event)
+                try:
+                    async for raw_event in connection:
+                        if isinstance(raw_event, BaseModel):
+                            yield raw_event.model_dump()
+                        else:
+                            yield json.loads(raw_event)
+                except StopAsyncIteration:
+                    print("[DEBUG] Connection stream completed")
+                    raise  # Re-raise to trigger context manager cleanup
 
             stream: AsyncIterator[dict[str, Any]] = event_stream()
 
             yield send_event, stream
+        except StopAsyncIteration:
+            print("[DEBUG] Stream completed, closing connection")
         finally:
+            print("[DEBUG] Cleaning up connection")
             await connection.close()
 
 
@@ -192,7 +191,7 @@ class VoiceToTextReactAgent(BaseModel):
     tools: list[BaseTool] | None = None
     url: str = Field(default=DEFAULT_URL)
 
-    @traced(name="VoiceToTextReactAgent.aconnect")
+    @traced(name="Semantic Layer Voice Agent")
     async def aconnect(
         self,
         input_stream: AsyncIterator[str],
@@ -208,6 +207,7 @@ class VoiceToTextReactAgent(BaseModel):
         """
         tools_by_name = {tool.name: tool for tool in self.tools}
         tool_executor = VoiceToolExecutor(tools_by_name=tools_by_name)
+        span_id = None
 
         async with connect() as (
             model_send,
@@ -232,9 +232,11 @@ class VoiceToTextReactAgent(BaseModel):
                             "model": "whisper-1",
                         },
                         "tools": tool_defs,
+                        "temperature": 0.6,
                     },
                 }
             )
+
             try:
                 async for stream_key, data_raw in amerge(
                     input_mic=input_stream,
@@ -247,6 +249,8 @@ class VoiceToTextReactAgent(BaseModel):
                             if isinstance(data_raw, str)
                             else data_raw
                         )
+                        if data.get("type") != "input_audio_buffer.append":
+                            print("data is: ", data)
                     except json.JSONDecodeError:
                         print("error decoding data:", data_raw)
                         continue
@@ -254,7 +258,6 @@ class VoiceToTextReactAgent(BaseModel):
                     if stream_key == "input_mic":
                         await model_send(data)
                     elif stream_key == "tool_outputs":
-                        print("tool output", data)
                         if data.get("type") == "conversation.item.create":
                             # Regular tool output - send to model
                             await model_send(data)
@@ -263,8 +266,14 @@ class VoiceToTextReactAgent(BaseModel):
                             )
                         else:
                             # Direct tool output - send straight to client
+
+                            bt_logger.update_span(
+                                id=span_id,
+                                output=data.get("output", {}).get("query", None),
+                            )
                             await send_output_chunk(json.dumps(data))
                     elif stream_key == "output_speaker":
+                        print("output_speaker", data)
                         t = data["type"]
                         if t == "response.audio.delta":
                             # Ignore audio deltas, we don't need them
@@ -298,6 +307,10 @@ class VoiceToTextReactAgent(BaseModel):
                         elif (
                             t == "conversation.item.input_audio_transcription.completed"
                         ):
+                            if data["transcript"].strip() != "":
+                                with start_span(name="user.input") as span:
+                                    span.log(input=data["transcript"])
+                                    span_id = span.id
                             print("user:", data["transcript"])
                             # Send the transcribed text to the client
                             await send_output_chunk(
@@ -308,13 +321,24 @@ class VoiceToTextReactAgent(BaseModel):
                                     }
                                 )
                             )
+                        elif t == "response.done":
+                            usage = data.get("response", {}).get("usage", {})
+                            bt_logger.update_span(
+                                id=span_id,
+                                metrics={
+                                    "prompt_tokens": usage.get("input_tokens", None),
+                                    "completion_tokens": usage.get(
+                                        "output_tokens", None
+                                    ),
+                                    "total_tokens": usage.get("total_tokens", None),
+                                },
+                            )
                         elif t in EVENTS_TO_IGNORE:
                             pass
                         else:
                             print(t)
-            except StopAsyncIteration:
-                # This is expected when the websocket closes
-                print("[DEBUG] Input stream completed, closing connection")
+            except (StopAsyncIteration, RuntimeError) as e:
+                print(f"[DEBUG] Stream completed: {str(e)}")
             except Exception as e:
                 print(f"[DEBUG] Error in stream processing: {str(e)}")
                 raise
