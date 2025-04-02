@@ -4,14 +4,14 @@ from collections.abc import AsyncGenerator, AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from typing import Any
 
+from braintrust import init_logger, traced, wrap_openai
 from langchain_core.tools import BaseTool
 from langchain_core.utils import secret_from_env
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, PrivateAttr, SecretStr
 
-from braintrust import init_logger, start_span, traced, wrap_openai
-from langchain_openai_voice.utils import amerge
 from server.settings import settings
+from voice_agent.utils import amerge
 
 DEFAULT_MODEL = "gpt-4o-realtime-preview-2024-10-01"
 DEFAULT_URL = "wss://api.openai.com/v1/realtime"
@@ -207,7 +207,6 @@ class VoiceToTextReactAgent(BaseModel):
         """
         tools_by_name = {tool.name: tool for tool in self.tools}
         tool_executor = VoiceToolExecutor(tools_by_name=tools_by_name)
-        span_id = None
 
         async with connect() as (
             model_send,
@@ -249,8 +248,6 @@ class VoiceToTextReactAgent(BaseModel):
                             if isinstance(data_raw, str)
                             else data_raw
                         )
-                        if data.get("type") != "input_audio_buffer.append":
-                            print("data is: ", data)
                     except json.JSONDecodeError:
                         print("error decoding data:", data_raw)
                         continue
@@ -266,14 +263,8 @@ class VoiceToTextReactAgent(BaseModel):
                             )
                         else:
                             # Direct tool output - send straight to client
-
-                            bt_logger.update_span(
-                                id=span_id,
-                                output=data.get("output", {}).get("query", None),
-                            )
                             await send_output_chunk(json.dumps(data))
                     elif stream_key == "output_speaker":
-                        print("output_speaker", data)
                         t = data["type"]
                         if t == "response.audio.delta":
                             # Ignore audio deltas, we don't need them
@@ -302,16 +293,10 @@ class VoiceToTextReactAgent(BaseModel):
                                 )
                             )
                         elif t == "response.function_call_arguments.done":
-                            print("tool call", data)
                             await tool_executor.add_tool_call(data)
                         elif (
                             t == "conversation.item.input_audio_transcription.completed"
                         ):
-                            if data["transcript"].strip() != "":
-                                with start_span(name="user.input") as span:
-                                    span.log(input=data["transcript"])
-                                    span_id = span.id
-                            print("user:", data["transcript"])
                             # Send the transcribed text to the client
                             await send_output_chunk(
                                 json.dumps(
@@ -323,16 +308,8 @@ class VoiceToTextReactAgent(BaseModel):
                             )
                         elif t == "response.done":
                             usage = data.get("response", {}).get("usage", {})
-                            bt_logger.update_span(
-                                id=span_id,
-                                metrics={
-                                    "prompt_tokens": usage.get("input_tokens", None),
-                                    "completion_tokens": usage.get(
-                                        "output_tokens", None
-                                    ),
-                                    "total_tokens": usage.get("total_tokens", None),
-                                },
-                            )
+                            print("data is: ", data)
+                            print("usage is: ", usage)
                         elif t in EVENTS_TO_IGNORE:
                             pass
                         else:

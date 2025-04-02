@@ -3,23 +3,16 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
+from braintrust import traced
 from langchain_community.tools import TavilySearchResults
 from langchain_core.tools import BaseTool
-from langchain_openai import OpenAIEmbeddings
 from pinecone import PineconeAsyncio
 from pydantic import BaseModel, Field
 
-from braintrust import traced
 from server.chart_models import create_chart
 from server.client import get_client
-from server.models import (
-    QueryParameters,
-    RetrievalDimension,
-    RetrievalMetric,
-    RetrievalResult,
-)
+from server.models import QueryParameters
 from server.settings import settings
-from server.vectorstore import SemanticLayerVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +21,9 @@ class SemanticLayerSearchInput(BaseModel):
     query: str = Field(
         description="The natural language query to search for metrics and dimensions"
     )
-    k_metrics: int = Field(
-        default=5, description="Number of metrics to retrieve (default: 5)"
-    )
-    k_dimensions: int = Field(
-        default=5,
-        description="Number of dimensions to retrieve per metric (default: 5)",
+    k_results: int = Field(
+        default=10,
+        description="Number of metrics and dimensions to retrieve (default: 10)",
     )
 
 
@@ -44,41 +34,77 @@ class SemanticLayerSearchTool(BaseTool):
     Use this tool when you need to find metrics and dimensions that match what the user is asking about.
     """
     args_schema: type[BaseModel] = SemanticLayerSearchInput
-    vector_store: SemanticLayerVectorStore = Field(
-        description="The vector store for semantic layer metadata search"
-    )
-
-    def __init__(self, vector_store: SemanticLayerVectorStore, **kwargs):
-        super().__init__(vector_store=vector_store, **kwargs)
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         """Synchronous run is not supported, use arun instead."""
         raise NotImplementedError("This tool only supports async operations")
 
-    @traced(name="semantic_layer_metadata", type="tool")
-    async def _arun(
-        self, query: str, k_metrics: int = 5, k_dimensions: int = 5
-    ) -> dict[str, Any]:
-        """Run the metric search."""
+    @traced(name="pinecone_semantic_search", type="tool")
+    async def _arun(self, query: str, k_results: int = 10) -> dict[str, Any]:
+        """Run the metric search using Pinecone."""
+
+        pinecone = PineconeAsyncio(api_key=settings.pinecone_api_key)
+
         try:
             logger.debug(f"Searching for metrics and dimensions with query: {query}")
 
-            # Validate k_metrics and k_dimensions are positive integers
-            k_metrics = max(1, min(k_metrics, 5))  # Limit between 1 and 20
-            k_dimensions = max(1, min(k_dimensions, 5))
+            # Validate k_results is positive integer
+            k_results = max(1, min(k_results, 10))
 
-            result = await self.vector_store.retrieve(
-                query=query, k_metrics=k_metrics, k_dimensions=k_dimensions
+            # Get index hosts
+            metric_index_desc = await pinecone.describe_index(
+                settings.pinecone_metric_index_name
             )
 
-            logger.debug(
-                f"Found {len(result.metrics)} metrics and {len(result.dimensions)} dimensions"
-            )
-            return result.model_dump()
+            # Search metrics
+            results = []
+            async with pinecone.IndexAsyncio(
+                host=metric_index_desc.host
+            ) as metric_index:
+                all_results = await metric_index.search(
+                    namespace="default",
+                    query={"inputs": {"text": query}, "top_k": 10},
+                    fields=[
+                        "name",
+                        "label",
+                        "type",
+                        "description",
+                        "requires_metric_time",
+                    ],
+                    rerank={
+                        "model": "bge-reranker-v2-m3",
+                        "top_n": 7,
+                        "rank_fields": ["name"],
+                    },
+                )
+                # Convert metric results to RetrievalMetric objects
+                for hit in all_results.result.hits:
+                    results.append(
+                        {
+                            "type": hit["fields"]["type"],
+                            "name": hit["fields"]["name"],
+                            "label": hit["fields"]["label"],
+                            "description": hit["fields"]["description"],
+                            "requires_metric_time": hit["fields"].get(
+                                "requires_metric_time", False
+                            ),
+                        }
+                    )
+
+            return results
+
         except Exception as e:
-            logger.error(f"Error in semantic layer search: {e}")
-            # Return a more graceful error response instead of raising
+            logger.error(f"Error in Pinecone semantic search: {e}")
             return {"metrics": [], "dimensions": [], "query": query, "error": str(e)}
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if self.pinecone:
+            await self.pinecone.close()
 
 
 class SemanticLayerQueryTool(BaseTool):
@@ -221,117 +247,9 @@ class SemanticLayerQueryTool(BaseTool):
             return {"error": str(e), "type": "error"}
 
 
-class PineconeSearchInput(BaseModel):
-    query: str = Field(
-        description="The natural language query to search for metrics and dimensions"
-    )
-    k_metrics: int = Field(
-        default=5, description="Number of metrics to retrieve (default: 5)"
-    )
-    k_dimensions: int = Field(
-        default=5,
-        description="Number of dimensions to retrieve per metric (default: 5)",
-    )
-
-
-class PineconeSearchTool(BaseTool):
-    name: str = "pinecone_semantic_search"
-    description: str = """
-    Search for relevant metrics and dimensions in the semantic layer based on a natural language query.
-    Use this tool when you need to find metrics and dimensions that match what the user is asking about.
-    """
-    args_schema: type[BaseModel] = PineconeSearchInput
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.embeddings = OpenAIEmbeddings()
-        self.pinecone = PineconeAsyncio(api_key=settings.pinecone_api_key)
-        self.metric_index = self.pinecone.Index(settings.pinecone_metric_index_name)
-        self.dimension_index = self.pinecone.Index(
-            settings.pinecone_dimension_index_name
-        )
-
-    def _run(self, *args: Any, **kwargs: Any) -> Any:
-        """Synchronous run is not supported, use arun instead."""
-        raise NotImplementedError("This tool only supports async operations")
-
-    @traced(name="pinecone_semantic_search", type="tool")
-    async def _arun(
-        self, query: str, k_metrics: int = 5, k_dimensions: int = 5
-    ) -> dict[str, Any]:
-        """Run the metric search using Pinecone."""
-        try:
-            logger.debug(f"Searching for metrics and dimensions with query: {query}")
-
-            # Validate k_metrics and k_dimensions are positive integers
-            k_metrics = max(1, min(k_metrics, 5))
-            k_dimensions = max(1, min(k_dimensions, 5))
-
-            # Generate query embedding
-            query_embedding = await self.embeddings.aembed_query(query)
-
-            # Search metrics
-            metric_results = await self.metric_index.query(
-                vector=query_embedding, top_k=k_metrics, include_metadata=True
-            )
-
-            # Convert metric results to RetrievalMetric objects
-            metrics = []
-            for match in metric_results.matches:
-                metrics.append(
-                    RetrievalMetric(
-                        name=match["metadata"]["name"],
-                        label=match["metadata"]["label"],
-                        description=match["metadata"]["description"],
-                        metric_type=match["metadata"]["metric_type"],
-                        requires_metric_time=match["metadata"]["requires_metric_time"],
-                    )
-                )
-
-            # Search dimensions
-            dimension_results = await self.dimension_index.query(
-                vector=query_embedding, top_k=k_dimensions, include_metadata=True
-            )
-
-            # Convert dimension results to RetrievalDimension objects
-            dimensions = []
-            for match in dimension_results.matches:
-                dimensions.append(
-                    RetrievalDimension(
-                        name=match["metadata"]["name"],
-                        label=match["metadata"]["label"],
-                        description=match["metadata"]["description"],
-                        metric_id=match["metadata"]["metric_id"],
-                    )
-                )
-
-            result = RetrievalResult(
-                metrics=metrics, dimensions=dimensions, query=query
-            )
-
-            logger.debug(
-                f"Found {len(metrics)} metrics and {len(dimensions)} dimensions"
-            )
-            return result.model_dump()
-
-        except Exception as e:
-            logger.error(f"Error in Pinecone semantic search: {e}")
-            return {"metrics": [], "dimensions": [], "query": query, "error": str(e)}
-
-    async def __aenter__(self):
-        """Async context manager entry."""
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        if self.pinecone:
-            await self.pinecone.close()
-
-
 def create_tools() -> Sequence[BaseTool]:
     """Create the tools with their required dependencies."""
     # Create vector store for this connection
-    vector_store = SemanticLayerVectorStore()
 
     tavily_tool = TavilySearchResults(
         max_results=5,
@@ -343,7 +261,7 @@ def create_tools() -> Sequence[BaseTool]:
     )
 
     return [
-        PineconeSearchTool(),
+        SemanticLayerSearchTool(),
         SemanticLayerQueryTool(),
         tavily_tool,
     ]

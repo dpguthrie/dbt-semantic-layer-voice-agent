@@ -4,9 +4,12 @@ from datetime import datetime
 from json import JSONEncoder
 
 import pyarrow as pa
+from openai import AsyncOpenAI
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
+
+client = AsyncOpenAI()
 
 
 class DateTimeEncoder(JSONEncoder):
@@ -53,3 +56,11 @@ def format_pyarrow_table(table: pa.Table) -> dict:
                 formatted_values.append(value)
         formatted_data[key] = formatted_values
     return formatted_data
+
+
+async def create_embedding(text: str) -> list[float]:
+    """Create an embedding vector for the given text using OpenAI's API."""
+    response = await client.embeddings.create(
+        input=text, model="text-embedding-3-small"
+    )
+    return response.data[0].embedding

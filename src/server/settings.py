@@ -25,11 +25,9 @@ class Settings(BaseSettings):
     )
 
     sl: SemanticLayerSettings
-    vector_store_path: str = "./chroma_db"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-realtime-preview-2024-12-17"
     braintrust_api_key: str = ""
-    braintrust_proxy_url: str = ""
     braintrust_project_name: str = ""
     pinecone_api_key: str = ""
     pinecone_metric_index_name: str = "semantic-metrics"

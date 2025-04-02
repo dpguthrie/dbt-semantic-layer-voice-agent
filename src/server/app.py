@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+import braintrust
 import uvicorn
 from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, Response
@@ -12,19 +13,18 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
 
-import braintrust
-from langchain_openai_voice import VoiceToTextReactAgent
 from server.chart_models import create_chart
+from server.client import get_client
 from server.models import Message
-from server.prompt import INSTRUCTIONS
+from server.pinecone_vectorstore import PineconeSemanticLayerVectorStore
+from server.prompt import BASIC_INSTRUCTIONS
 from server.settings import settings
 from server.storage import ConversationStorage
 from server.tools import create_tools
 from server.utils import DateTimeEncoder, format_pyarrow_table, websocket_stream
-from server.vectorstore import SemanticLayerVectorStore
+from voice_agent import VoiceToTextReactAgent
 
 logger = logging.getLogger(__name__)
-
 
 bt_logger = braintrust.init_logger(project=settings.braintrust_project_name)
 
@@ -43,35 +43,32 @@ class JSONResponse(Response):
 async def lifespan(app: Starlette) -> AsyncIterator[None]:
     """Initialize application state and manage semantic layer session."""
     try:
-        logger.info("Initializing application state...")
+        logger.info("Starting application initialization...")
 
-        # Initialize conversation storage
+        logger.info("Initializing conversation storage...")
         app.state.storage = ConversationStorage()
-        logger.info("Conversation storage initialized")
+        logger.info("Conversation storage initialized successfully")
 
-        # Create and populate vector store
-        vector_store = SemanticLayerVectorStore()
-        await vector_store.refresh_stores()
-        logger.info("Vector store created and refreshed")
+        # Check if Pinecone indexes need initialization
+        logger.info("Checking Pinecone indexes...")
+        async with PineconeSemanticLayerVectorStore() as vector_store:
+            if not await vector_store.indexes_exist():
+                logger.info(
+                    "Pinecone indexes not found, initializing and refreshing data..."
+                )
+                await vector_store.initialize()
+                await vector_store.refresh_stores()
+                logger.info("Vector store refresh completed successfully")
+            else:
+                logger.info("Pinecone indexes already exist, skipping refresh")
 
+        logger.info("Application initialization completed successfully")
         yield
 
     except Exception as e:
-        logger.error(f"Failed to initialize application: {e}")
+        logger.error(f"Failed to initialize application: {e}", exc_info=True)
         raise
     finally:
-        logger.info("Cleaning up application state...")
-        # Clean up vector store
-        try:
-            vector_store = SemanticLayerVectorStore()
-            if vector_store.metric_store:
-                vector_store.metric_store.delete_collection()
-            if vector_store.dimension_store:
-                vector_store.dimension_store.delete_collection()
-            logger.info("Vector store cleanup completed")
-        except Exception as e:
-            logger.error(f"Error cleaning up vector store: {e}")
-
         logger.info("Application cleanup completed")
 
 
@@ -182,11 +179,12 @@ async def update_message(request):
         query_params = message.data["query"]
 
         # Execute query
-        client = request.app.state.client
-        table, sql = await asyncio.gather(
-            client.query(**query_params),
-            client.compile_sql(**query_params),
-        )
+        client = get_client()
+        async with client.session():
+            table, sql = await asyncio.gather(
+                client.query(**query_params),
+                client.compile_sql(**query_params),
+            )
 
         # Generate chart configuration using create_chart function
         metrics = query_params.get("metrics", [])
@@ -239,6 +237,26 @@ async def delete_conversation(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+async def send_feedback(request):
+    """Send feedback to Braintrust."""
+    try:
+        data = await request.json()
+        input = data["input"]
+        expected = data["expected"]
+        metadata = data["metadata"]
+
+        # Send feedback to Braintrust
+        dataset = braintrust.init_dataset(
+            project=settings.braintrust_project_name,
+            name="semantic_layer_query_examples",
+        )
+        dataset.insert(input=input, expected=expected, metadata=metadata)
+        return JSONResponse({"status": "success"})
+    except Exception as e:
+        logger.error(f"Error sending feedback: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
@@ -259,11 +277,11 @@ async def websocket_endpoint(websocket: WebSocket):
             context = conversation.context
 
     # Modify instructions if context exists
-    final_instructions = INSTRUCTIONS
+    final_instructions = BASIC_INSTRUCTIONS
     if context:
         logger.info(f"Applying conversation context: {context}")
         final_instructions = (
-            f"{INSTRUCTIONS}\n\n"
+            f"{BASIC_INSTRUCTIONS}\n\n"
             f"IMPORTANT: The following context MUST be applied to ALL queries:\n"
             f"<context>{context}</context>\n\n"
             f"You MUST modify EVERY query to incorporate these requirements as shown in the CONTEXT EXAMPLES above.\n"
@@ -290,59 +308,71 @@ async def homepage(_request):
         return HTMLResponse(html)
 
 
-routes = [
-    Route("/", homepage),
-    WebSocketRoute("/ws", websocket_endpoint),
-    # Conversation management routes
-    Route("/api/conversations", list_conversations, methods=["GET"]),
-    Route("/api/conversations", create_conversation, methods=["POST"]),
-    Route(
-        "/api/conversations/{conversation_id:int}", get_conversation, methods=["GET"]
-    ),
-    Route(
-        "/api/conversations/{conversation_id:int}",
-        delete_conversation,
-        methods=["DELETE"],
-    ),
-    Route(
-        "/api/conversations/{conversation_id:int}/title",
-        update_conversation_title,
-        methods=["PUT"],
-    ),
-    Route(
-        "/api/conversations/{conversation_id:int}/context",
-        update_conversation_context,
-        methods=["PUT"],
-    ),
-    Route(
-        "/api/conversations/{conversation_id:int}/messages",
-        add_message,
-        methods=["POST"],
-    ),
-    Route(
-        "/api/conversations/{conversation_id:int}/messages",
-        clear_messages,
-        methods=["DELETE"],
-    ),
-    Route(
-        "/api/conversations/{conversation_id:int}/messages/{message_id:int}",
-        update_message,
-        methods=["PUT"],
-    ),
-]
+def create_app() -> Starlette:
+    """Create and configure the Starlette application."""
+    routes = [
+        Route("/", endpoint=homepage),
+        WebSocketRoute("/ws", endpoint=websocket_endpoint),
+        # Conversation management routes
+        Route("/api/conversations", list_conversations, methods=["GET"]),
+        Route("/api/conversations", create_conversation, methods=["POST"]),
+        Route(
+            "/api/conversations/{conversation_id:int}",
+            get_conversation,
+            methods=["GET"],
+        ),
+        Route(
+            "/api/conversations/{conversation_id:int}",
+            delete_conversation,
+            methods=["DELETE"],
+        ),
+        Route(
+            "/api/conversations/{conversation_id:int}/title",
+            update_conversation_title,
+            methods=["PUT"],
+        ),
+        Route(
+            "/api/conversations/{conversation_id:int}/context",
+            update_conversation_context,
+            methods=["PUT"],
+        ),
+        Route(
+            "/api/conversations/{conversation_id:int}/messages",
+            add_message,
+            methods=["POST"],
+        ),
+        Route(
+            "/api/conversations/{conversation_id:int}/messages",
+            clear_messages,
+            methods=["DELETE"],
+        ),
+        Route(
+            "/api/conversations/{conversation_id:int}/messages/{message_id:int}",
+            update_message,
+            methods=["PUT"],
+        ),
+        # Feedback route
+        Route("/api/feedback", send_feedback, methods=["POST"]),
+    ]
 
-app = Starlette(
-    debug=True,
-    routes=routes,
-    lifespan=lifespan,
-)
+    app = Starlette(
+        debug=True,
+        routes=routes,
+        lifespan=lifespan,
+    )
 
-app.mount("/", StaticFiles(directory="src/server/static"), name="static")
+    # Mount static files
+    app.mount("/", StaticFiles(directory="src/server/static"), name="static")
+
+    return app
+
+
+app = create_app()
 
 if __name__ == "__main__":
     # Configure logging
-    # logging.basicConfig(
-    #     level=logging.INFO,
-    #     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    # )
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    uvicorn.run("server.app:app", host="0.0.0.0", port=3000, reload=True)

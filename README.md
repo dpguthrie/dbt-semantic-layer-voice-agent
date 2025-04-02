@@ -85,7 +85,7 @@ The backend is built using:
 - Starlette for the web server
 - LangChain for AI agent and tool execution
 - dbt Semantic Layer for data access
-- Chroma for vector storage
+- Pinecone for vector storage
 - WebSockets for real-time communication
 - SQLite for conversation storage
 

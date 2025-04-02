@@ -1,18 +1,31 @@
 #!/usr/bin/env python
 import asyncio
 import json
+import os
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
-from autoevals import Levenshtein
+import nest_asyncio
+from autoevals import JSONDiff, Levenshtein
+from braintrust import EvalAsync, init_dataset
+from dotenv import load_dotenv
 
-from braintrust import EvalAsync
-from langchain_openai_voice import VoiceToTextReactAgent
-from server.prompt import INSTRUCTIONS
+from server.prompt import BASIC_INSTRUCTIONS
 from server.settings import settings
 from server.tools import create_tools
-from server.vectorstore import SemanticLayerVectorStore
+from voice_agent import VoiceToTextReactAgent
+
+nest_asyncio.apply()
+
+load_dotenv()
+
+
+BRAINTRUST_PROJECT_NAME = os.getenv("BRAINTRUST_PROJECT_NAME")
+BRAINTRUST_QUERY_DATASET_NAME = "semantic_layer_query_examples"
+
+MODEL = "gpt-4o-realtime-preview-2024-12-17"
+PROMPT = BASIC_INSTRUCTIONS
 
 
 async def create_input_stream(text: str) -> AsyncIterator[str]:
@@ -81,20 +94,17 @@ class OutputCollector:
             # Check for different types of responses
             if output.get("type") == "assistant.response":
                 print("[DEBUG] Received assistant.response")
-                self.final_response = output.get("text", "")
-                self.response_received.set()
             elif output.get("type") == "error":
                 print(f"[DEBUG] Error from API: {output.get('error', 'Unknown error')}")
-                self.response_received.set()
+                # self.response_received.set()
             elif output.get("type") == "function_call_output":
                 print("[DEBUG] Received function_call_output")
                 try:
                     # Parse the output string which contains the query result
-                    result = json.loads(output.get("output", "{}"))
+                    result = output.get("output", {})
                     if result.get("type") == "query_result":
                         # Extract the query part and set as final response
                         query_data = result.get("query", {})
-                        query_data = {k: v for k, v in query_data.items() if v}
                         self.final_response = json.dumps(query_data)
                         self.response_received.set()
                         print(
@@ -177,11 +187,6 @@ async def run_agent_with_input(agent: VoiceToTextReactAgent, input_text: str) ->
                 print(f"[DEBUG] Error cleaning up connection task: {str(e)}")
 
 
-async def aiter_to_list(ait):
-    """Helper to consume an async iterator to completion"""
-    return [x async for x in ait]
-
-
 def load_examples(jsonl_path: str) -> list[dict[str, Any]]:
     """Load examples from a JSONL file"""
     examples = []
@@ -193,21 +198,14 @@ def load_examples(jsonl_path: str) -> list[dict[str, Any]]:
     return examples
 
 
-async def initialize_vector_store():
-    """Initialize and refresh the vector store"""
-    vector_store = SemanticLayerVectorStore()
-    await vector_store.refresh_stores()
-    return vector_store
-
-
 def create_agent() -> VoiceToTextReactAgent:
     """Create a VoiceToTextReactAgent instance for evaluation"""
     tools = create_tools()  # Get the same tools used in the web app
 
     return VoiceToTextReactAgent(
-        model="gpt-4o-realtime-preview",
+        model=MODEL,
         tools=tools,
-        instructions=INSTRUCTIONS,
+        instructions=PROMPT,
         openai_api_key=settings.openai_api_key,
     )
 
@@ -218,56 +216,28 @@ async def evaluate_agent(agent: VoiceToTextReactAgent, input_text: str) -> str:
     return result
 
 
-def main():
+async def run_eval():
     """Run the evaluation using Braintrust"""
-    # Load examples
-    all_examples = load_examples("datasets/examples.jsonl")
 
-    async def initialize_resources():
-        """Initialize resources and process one example"""
-        print("[DEBUG] Initializing vector store and creating agent...")
-        await initialize_vector_store()
-        agent = create_agent()
-        print("[DEBUG] Setup complete")
-        return agent
+    agent = create_agent()
 
-    async def run_eval():
-        """Run the evaluation in an async context"""
-        agent = await initialize_resources()
-        experiment_name = f"voice_agent_eval_{uuid.uuid4()}"
-        print(f"[DEBUG] Running experiment: {experiment_name}")
+    async def eval_task(example: str) -> str:
+        """Task function that handles a single example."""
+        return await evaluate_agent(agent, example)
 
-        async def eval_task(example: str | dict[str, Any]) -> str:
-            """Task function that handles both string and dict inputs"""
-            if isinstance(example, dict):
-                input_text = example.get("input", "")
-            else:
-                input_text = str(example)
-            print(f"[DEBUG] Processing input: {input_text}")
-            return await evaluate_agent(agent, input_text)
-
-        try:
-            await EvalAsync(
-                "Voice Agent",
-                experiment_name=experiment_name,
-                data=lambda: all_examples,
-                task=eval_task,
-                scores=[Levenshtein],
-            )
-        except Exception as e:
-            print(f"[DEBUG] Error during evaluation: {str(e)}")
-        finally:
-            # Clean up any remaining tasks
-            tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Run the async evaluation
-    asyncio.run(run_eval())
+    try:
+        await EvalAsync(
+            name=BRAINTRUST_PROJECT_NAME,
+            data=init_dataset(
+                project=BRAINTRUST_PROJECT_NAME, name=BRAINTRUST_QUERY_DATASET_NAME
+            ),
+            task=eval_task,
+            scores=[Levenshtein, JSONDiff],
+            experiment_name=f"semantic-layer-query-{uuid.uuid4()}",
+            metadata={"model": MODEL},
+        )
+    except Exception as e:
+        print(f"[DEBUG] Error during evaluation: {str(e)}")
 
 
-if __name__ == "__main__":
-    main()
+asyncio.run(run_eval())
