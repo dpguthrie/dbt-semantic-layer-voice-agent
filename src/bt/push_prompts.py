@@ -14,11 +14,11 @@ project = braintrust.projects.create(name=os.getenv("BRAINTRUST_PROJECT_NAME"))
 
 
 MODEL = "gpt-4o-mini"
-NAME = "semantic-layer-prompt"
-SLUG = f"{NAME}-{MODEL}"
+NAME = "Semantic Layer Prompt (SDK)"
+SLUG = f"semantic-layer-prompt-sdk-{MODEL}"
 
 
-system_prompt = prompt.INSTRUCTIONS
+system_prompt = prompt.BASIC_INSTRUCTIONS
 
 project.prompts.create(
     name=NAME,
