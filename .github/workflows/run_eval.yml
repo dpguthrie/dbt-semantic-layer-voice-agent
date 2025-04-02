@@ -25,8 +25,7 @@ jobs:
           UV_SYSTEM_PYTHON: 1
  
       - name: Run Evals
-        uses: braintrustdata/eval-action@v1
-        with:
-          api_key: ${{ secrets.BRAINTRUST_API_KEY }}
-          runtime: python
-          root: src/bt
+        env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          BRAINTRUST_PROJECT_NAME: ${{ secrets.BRAINTRUST_PROJECT_NAME }}
+        run: make run-evals
