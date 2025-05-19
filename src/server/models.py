@@ -57,43 +57,6 @@ class VectorStoreDimension(_PageContentModel):
         return "" if v is None else v
 
 
-class RetrievalMetric(BaseModel):
-    """Simplified metric model for retrieval results."""
-
-    name: str = Field(description="Unique identifier of the metric")
-    label: str = Field(description="Human-readable label of the metric")
-    description: str | None = Field(
-        None, description="Optional description of the metric"
-    )
-    metric_type: str = Field(
-        description="Type of the metric (e.g., 'count', 'sum', etc.)"
-    )
-    requires_metric_time: bool = Field(
-        description="Whether the metric requires a metric time"
-    )
-
-
-class RetrievalDimension(BaseModel):
-    """Simplified dimension model for retrieval results."""
-
-    name: str = Field(description="Name of the dimension")
-    label: str | None = Field(None, description="Human-readable label of the dimension")
-    description: str | None = Field(
-        None, description="Optional description of the dimension"
-    )
-    metric_id: str = Field(description="ID of the metric this dimension belongs to")
-
-
-class RetrievalResult(BaseModel):
-    """Result from vector store retrieval."""
-
-    metrics: list[RetrievalMetric] = Field(description="Retrieved relevant metrics")
-    dimensions: list[RetrievalDimension] = Field(
-        description="Retrieved relevant dimensions"
-    )
-    query: str = Field(description="Original query that was used for retrieval")
-
-
 class QueryParameters(BaseModel):
     """The parameters of a query to the semantic layer."""
 

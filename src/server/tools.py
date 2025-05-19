@@ -1,18 +1,18 @@
 import asyncio
-import json
 import logging
 from collections.abc import Sequence
 from typing import Any
 
+from braintrust import traced
 from langchain_community.tools import TavilySearchResults
 from langchain_core.tools import BaseTool
+from pinecone import PineconeAsyncio
 from pydantic import BaseModel, Field
-from starlette.applications import Starlette
 
 from server.chart_models import create_chart
-from server.models import (
-    QueryParameters,
-)
+from server.client import get_client
+from server.models import QueryParameters
+from server.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +21,9 @@ class SemanticLayerSearchInput(BaseModel):
     query: str = Field(
         description="The natural language query to search for metrics and dimensions"
     )
-    k_metrics: int = Field(
-        default=5, description="Number of metrics to retrieve (default: 5)"
-    )
-    k_dimensions: int = Field(
-        default=5,
-        description="Number of dimensions to retrieve per metric (default: 5)",
+    k_results: int = Field(
+        default=10,
+        description="Number of metrics and dimensions to retrieve (default: 10)",
     )
 
 
@@ -37,35 +34,77 @@ class SemanticLayerSearchTool(BaseTool):
     Use this tool when you need to find metrics and dimensions that match what the user is asking about.
     """
     args_schema: type[BaseModel] = SemanticLayerSearchInput
-    app: Starlette
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         """Synchronous run is not supported, use arun instead."""
         raise NotImplementedError("This tool only supports async operations")
 
-    async def _arun(
-        self, query: str, k_metrics: int = 5, k_dimensions: int = 5
-    ) -> dict[str, Any]:
-        """Run the metric search."""
+    @traced(name="pinecone_semantic_search", type="tool")
+    async def _arun(self, query: str, k_results: int = 10) -> dict[str, Any]:
+        """Run the metric search using Pinecone."""
+
+        pinecone = PineconeAsyncio(api_key=settings.pinecone_api_key)
+
         try:
             logger.debug(f"Searching for metrics and dimensions with query: {query}")
 
-            # Validate k_metrics and k_dimensions are positive integers
-            k_metrics = max(1, min(k_metrics, 5))  # Limit between 1 and 20
-            k_dimensions = max(1, min(k_dimensions, 5))
+            # Validate k_results is positive integer
+            k_results = max(1, min(k_results, 10))
 
-            result = await self.app.state.vector_store.retrieve(
-                query=query, k_metrics=k_metrics, k_dimensions=k_dimensions
+            # Get index hosts
+            metric_index_desc = await pinecone.describe_index(
+                settings.pinecone_metric_index_name
             )
 
-            logger.debug(
-                f"Found {len(result.metrics)} metrics and {len(result.dimensions)} dimensions"
-            )
-            return result.model_dump()
+            # Search metrics
+            results = []
+            async with pinecone.IndexAsyncio(
+                host=metric_index_desc.host
+            ) as metric_index:
+                all_results = await metric_index.search(
+                    namespace="default",
+                    query={"inputs": {"text": query}, "top_k": 10},
+                    fields=[
+                        "name",
+                        "label",
+                        "type",
+                        "description",
+                        "requires_metric_time",
+                    ],
+                    rerank={
+                        "model": "bge-reranker-v2-m3",
+                        "top_n": 7,
+                        "rank_fields": ["name"],
+                    },
+                )
+                # Convert metric results to RetrievalMetric objects
+                for hit in all_results.result.hits:
+                    results.append(
+                        {
+                            "type": hit["fields"]["type"],
+                            "name": hit["fields"]["name"],
+                            "label": hit["fields"]["label"],
+                            "description": hit["fields"]["description"],
+                            "requires_metric_time": hit["fields"].get(
+                                "requires_metric_time", False
+                            ),
+                        }
+                    )
+
+            return results
+
         except Exception as e:
-            logger.error(f"Error in semantic layer search: {e}")
-            # Return a more graceful error response instead of raising
+            logger.error(f"Error in Pinecone semantic search: {e}")
             return {"metrics": [], "dimensions": [], "query": query, "error": str(e)}
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if self.pinecone:
+            await self.pinecone.close()
 
 
 class SemanticLayerQueryTool(BaseTool):
@@ -85,7 +124,6 @@ class SemanticLayerQueryTool(BaseTool):
     Do not make up metrics or dimensions, only use those returned by the semantic_layer_metadata tool.
     """
     args_schema: type[BaseModel] = QueryParameters
-    app: Starlette
     return_direct: bool = True  # This ensures the response goes directly to the model
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
@@ -108,6 +146,7 @@ class SemanticLayerQueryTool(BaseTool):
             formatted_data[key] = formatted_values
         return formatted_data
 
+    @traced(name="semantic_layer_query", type="tool")
     async def _arun(
         self,
         metrics: list[str],
@@ -118,6 +157,9 @@ class SemanticLayerQueryTool(BaseTool):
     ) -> dict[str, Any]:
         """Query the semantic layer to return data requested by the user."""
         try:
+            # Create a fresh client for each query
+            client = get_client()
+
             # Ensure defaults for all fields
             group_by = group_by or []
             order_by = order_by or []
@@ -129,23 +171,24 @@ class SemanticLayerQueryTool(BaseTool):
                 f"order_by: {order_by}, where: {where}"
             )
 
-            # Execute query and get SQL concurrently
-            table, sql = await asyncio.gather(
-                self.app.state.client.query(
-                    metrics=metrics,
-                    group_by=group_by,
-                    limit=limit,
-                    order_by=order_by,
-                    where=where,
-                ),
-                self.app.state.client.compile_sql(
-                    metrics=metrics,
-                    group_by=group_by,
-                    limit=limit,
-                    order_by=order_by,
-                    where=where,
-                ),
-            )
+            async with client.session():
+                # Execute query and get SQL concurrently
+                table, sql = await asyncio.gather(
+                    client.query(
+                        metrics=metrics,
+                        group_by=group_by,
+                        limit=limit,
+                        order_by=order_by,
+                        where=where,
+                    ),
+                    client.compile_sql(
+                        metrics=metrics,
+                        group_by=group_by,
+                        limit=limit,
+                        order_by=order_by,
+                        where=where,
+                    ),
+                )
 
             logger.debug("Query completed successfully")
 
@@ -155,9 +198,8 @@ class SemanticLayerQueryTool(BaseTool):
                 chart_js_config = chart.get_config()
             except Exception as e:
                 logger.error(f"Error creating chart config: {e}")
-                # Provide a fallback chart configuration that shows an error message
                 chart_js_config = {
-                    "type": "bar",  # Use simple bar chart as fallback
+                    "type": "bar",
                     "data": {"labels": [], "datasets": []},
                     "options": {
                         "responsive": True,
@@ -165,7 +207,7 @@ class SemanticLayerQueryTool(BaseTool):
                             "title": {
                                 "display": True,
                                 "text": "Unable to create chart visualization",
-                                "color": "#94EAD4",  # Using one of our theme colors
+                                "color": "#94EAD4",
                                 "font": {"size": 16},
                             },
                             "subtitle": {
@@ -182,26 +224,22 @@ class SemanticLayerQueryTool(BaseTool):
             data_dict = table.to_pydict()
             formatted_data = self._format_data(data_dict)
 
-            # Format the response for the frontend - ensure it's wrapped correctly for direct return
             return {
-                "type": "function_call_output",  # This matches what the frontend expects
-                "output": json.dumps(
-                    {
-                        "type": "query_result",
-                        "sql": sql,
-                        "data": formatted_data,
-                        "chart_config": chart_js_config,
-                        # TODO: Remove this once we're handling metrics in the frontend via query
-                        "metrics": metrics,
-                        "query": QueryParameters(
-                            metrics=metrics,
-                            group_by=group_by or [],
-                            limit=limit,
-                            order_by=order_by or [],
-                            where=where or [],
-                        ).model_dump(),
-                    }
-                ),
+                "type": "function_call_output",
+                "output": {
+                    "type": "query_result",
+                    "sql": sql,
+                    "data": formatted_data,
+                    "chart_config": chart_js_config,
+                    "metrics": metrics,
+                    "query": QueryParameters(
+                        metrics=metrics,
+                        group_by=group_by or [],
+                        limit=limit,
+                        order_by=order_by or [],
+                        where=where or [],
+                    ).model_dump(),
+                },
             }
 
         except Exception as e:
@@ -209,8 +247,10 @@ class SemanticLayerQueryTool(BaseTool):
             return {"error": str(e), "type": "error"}
 
 
-def create_tools(app: Starlette) -> Sequence[BaseTool]:
-    """Create the tools with access to application state."""
+def create_tools() -> Sequence[BaseTool]:
+    """Create the tools with their required dependencies."""
+    # Create vector store for this connection
+
     tavily_tool = TavilySearchResults(
         max_results=5,
         include_answer=True,
@@ -221,7 +261,7 @@ def create_tools(app: Starlette) -> Sequence[BaseTool]:
     )
 
     return [
-        SemanticLayerSearchTool(app=app),
-        SemanticLayerQueryTool(app=app),
+        SemanticLayerSearchTool(),
+        SemanticLayerQueryTool(),
         tavily_tool,
     ]

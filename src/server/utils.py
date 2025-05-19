@@ -1,9 +1,15 @@
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from json import JSONEncoder
 
 import pyarrow as pa
-from starlette.websockets import WebSocket
+from openai import AsyncOpenAI
+from starlette.websockets import WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
+
+client = AsyncOpenAI()
 
 
 class DateTimeEncoder(JSONEncoder):
@@ -16,12 +22,22 @@ class DateTimeEncoder(JSONEncoder):
 
 
 async def websocket_stream(websocket: WebSocket) -> AsyncIterator[str]:
-    """Create an async iterator from a WebSocket connection."""
+    """Create an async iterator from a WebSocket connection.
+
+    This function will:
+    1. Yield messages from the websocket until it's closed
+    2. Handle WebSocketDisconnect by raising StopAsyncIteration (expected when user stops recording)
+    3. Log other exceptions for debugging
+    """
     try:
         while True:
             yield await websocket.receive_text()
-    except Exception:
-        pass
+    except WebSocketDisconnect as e:
+        logger.info(f"WebSocket disconnected by client: {e.reason}")
+        raise StopAsyncIteration("WebSocket disconnected by client")
+    except Exception as e:
+        logger.error(f"Unexpected error in websocket_stream: {e}")
+        raise
 
 
 def format_pyarrow_table(table: pa.Table) -> dict:
@@ -40,3 +56,11 @@ def format_pyarrow_table(table: pa.Table) -> dict:
                 formatted_values.append(value)
         formatted_data[key] = formatted_values
     return formatted_data
+
+
+async def create_embedding(text: str) -> list[float]:
+    """Create an embedding vector for the given text using OpenAI's API."""
+    response = await client.embeddings.create(
+        input=text, model="text-embedding-3-small"
+    )
+    return response.data[0].embedding

@@ -1,0 +1,31 @@
+name: Run Python evals
+ 
+on:
+  push:
+    # Uncomment to run only when files in the 'evals' directory change
+    # - paths:
+    #     - "evals/**"
+ 
+permissions:
+  pull-requests: write
+  contents: read
+ 
+jobs:
+  eval:
+    name: Run evals
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync
+        env:
+          UV_SYSTEM_PYTHON: 1
+ 
+      - name: Run Evals
+        env:
+          BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+          BRAINTRUST_PROJECT_NAME: ${{ secrets.BRAINTRUST_PROJECT_NAME }}
+        run: make run-evals
