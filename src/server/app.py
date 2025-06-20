@@ -17,7 +17,7 @@ from server.chart_models import create_chart
 from server.client import get_client
 from server.models import Message
 from server.pinecone_vectorstore import PineconeSemanticLayerVectorStore
-from server.prompt import BASIC_INSTRUCTIONS
+from server.prompt import INSTRUCTIONS
 from server.settings import settings
 from server.storage import ConversationStorage
 from server.tools import create_tools
@@ -277,11 +277,11 @@ async def websocket_endpoint(websocket: WebSocket):
             context = conversation.context
 
     # Modify instructions if context exists
-    final_instructions = BASIC_INSTRUCTIONS
+    final_instructions = INSTRUCTIONS
     if context:
         logger.info(f"Applying conversation context: {context}")
         final_instructions = (
-            f"{BASIC_INSTRUCTIONS}\n\n"
+            f"{INSTRUCTIONS}\n\n"
             f"IMPORTANT: The following context MUST be applied to ALL queries:\n"
             f"<context>{context}</context>\n\n"
             f"You MUST modify EVERY query to incorporate these requirements as shown in the CONTEXT EXAMPLES above.\n"

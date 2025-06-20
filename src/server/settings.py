@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     braintrust_api_key: str = ""
     braintrust_project_name: str = ""
     pinecone_api_key: str = ""
+    tavily_api_key: str = ""
     pinecone_metric_index_name: str = "semantic-metrics"
     pinecone_dimension_index_name: str = "semantic-dimensions"
 

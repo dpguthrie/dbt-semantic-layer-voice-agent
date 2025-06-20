@@ -11,7 +11,7 @@ from autoevals import JSONDiff, Levenshtein
 from braintrust import EvalAsync, init_dataset
 from dotenv import load_dotenv
 
-from server.prompt import BASIC_INSTRUCTIONS
+from server.prompt import INSTRUCTIONS
 from server.settings import settings
 from server.tools import create_tools
 from voice_agent import VoiceToTextReactAgent
@@ -25,7 +25,7 @@ BRAINTRUST_PROJECT_NAME = os.getenv("BRAINTRUST_PROJECT_NAME")
 BRAINTRUST_QUERY_DATASET_NAME = "semantic_layer_query_examples"
 
 MODEL = "gpt-4o-realtime-preview-2024-12-17"
-PROMPT = BASIC_INSTRUCTIONS
+PROMPT = INSTRUCTIONS
 
 
 async def create_input_stream(text: str) -> AsyncIterator[str]:
