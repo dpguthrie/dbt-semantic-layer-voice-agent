@@ -57,6 +57,7 @@
             margin: 5px 0;
             line-height: 1.5;  /* Better readability */
             font-size: 15px;  /* Slightly larger font */
+            position: relative;  /* For feedback buttons positioning */
         }
 
         .message pre {
@@ -169,7 +170,7 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3),  /* Deeper outer shadow */
                        0 8px 16px rgba(0, 0, 0, 0.2),   /* Mid-level shadow */
                        0 2px 4px rgba(0, 0, 0, 0.1);    /* Subtle inner shadow */
-            margin: 16px 0;  /* Add some vertical spacing */
+            margin: 16px 0px;  /* Add some vertical spacing */
             border: 1px solid #2D3748;  /* Subtle border */
         }
 
@@ -371,7 +372,7 @@
 
         /* Chart container styling */
         .chart-container {
-            width: 800px;
+            width: 900px;
             height: 400px;
             position: relative;
             overflow-x: auto;
@@ -748,6 +749,42 @@
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
+        }
+
+        /* Add feedback buttons styling */
+        .feedback-buttons {
+            position: absolute;
+            bottom: 50px;
+            right: 35px;
+            z-index: 100;
+            display: flex;
+            gap: 8px;
+            transition: opacity 0.2s ease;
+        }
+
+        .assistant-message:hover .feedback-buttons {
+            opacity: 1;
+        }
+
+        .feedback-button {
+            background: none;
+            border: none;
+            padding: 4px;
+            cursor: pointer;
+            color: #94A3B8;
+            transition: all 0.2s ease;
+            border-radius: 4px;
+        }
+
+
+        .feedback-button.selected {
+            color: #5EEAD4;
+            background-color: rgba(94, 234, 212, 0.1);
+        }
+
+        .feedback-button.selected.negative {
+            color: #EF4444;
+            background-color: rgba(239, 68, 68, 0.1);
         }
     </style>
 </head>
@@ -1249,6 +1286,95 @@
                 messageDiv.dataset.messageId = messageId;
             }
 
+            // Add feedback buttons for assistant messages
+            if (!isUser) {
+                const feedbackButtons = document.createElement('div');
+                feedbackButtons.className = 'feedback-buttons';
+                
+                const thumbsUpButton = document.createElement('button');
+                thumbsUpButton.className = 'feedback-button';
+                thumbsUpButton.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                    </svg>
+                `;
+                thumbsUpButton.title = "This was helpful";
+
+                const thumbsDownButton = document.createElement('button');
+                thumbsDownButton.className = 'feedback-button';
+                thumbsDownButton.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path>
+                    </svg>
+                `;
+                thumbsDownButton.title = "This was not helpful";
+
+                // Add click handlers for feedback
+                const handleFeedback = async (isPositive) => {
+                    // Find the previous user message (input)
+                    let userMessage = null;
+                    let prevElement = messageDiv.previousElementSibling;
+                    while (prevElement) {
+                        if (prevElement.classList.contains('user-message')) {
+                            userMessage = prevElement;
+                            break;
+                        }
+                        prevElement = prevElement.previousElementSibling;
+                    }
+
+                    if (!userMessage) {
+                        console.error('No user message found for feedback');
+                        return;
+                    }
+
+                    try {
+                        let data = null;
+                        try {
+                            // Try to parse the assistant's response as JSON
+                            data = JSON.parse(text);
+                        } catch (e) {
+                            // If not JSON, use the text as is
+                            data = { text };
+                        }
+
+                        // Send feedback to Braintrust
+                        const response = await fetch('/api/feedback', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                input: userMessage.textContent,
+                                expected: data.query,
+                                metadata: {
+                                    conversation_id: currentConversationId,
+                                    feedback: isPositive ? 'thumbs_up' : 'thumbs_down',
+                                    message_id: messageId
+                                }
+                            })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Failed to send feedback');
+                        }
+
+                        // Update button states
+                        thumbsUpButton.classList.toggle('selected', isPositive);
+                        thumbsDownButton.classList.toggle('selected.negative', !isPositive);
+                    } catch (error) {
+                        console.error('Error sending feedback:', error);
+                        alert('Failed to send feedback. Please try again.');
+                    }
+                };
+
+                thumbsUpButton.addEventListener('click', () => handleFeedback(true));
+                thumbsDownButton.addEventListener('click', () => handleFeedback(false));
+
+                feedbackButtons.appendChild(thumbsUpButton);
+                feedbackButtons.appendChild(thumbsDownButton);
+                messageDiv.appendChild(feedbackButtons);
+            }
+
             try {
                 // Try to parse as JSON in case it's a query result
                 const data = JSON.parse(text);
@@ -1728,7 +1854,7 @@
                             case "function_call_output":
                                 // Handle function call outputs
                                 try {
-                                    const result = JSON.parse(message.output);
+                                    const result = message.output;
                                     console.log('Function call output:', result);
                                     if (result.type === "query_result") {
                                         // It's a query result, display it

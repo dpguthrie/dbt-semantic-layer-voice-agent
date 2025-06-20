@@ -10,12 +10,14 @@ dependencies = [
     "starlette>=0.39.2",
     "uvicorn[standard]>=0.34.0",
     "dbt-sl-sdk[async]==0.8.0",
-    "langchain-chroma>=0.1.2",
     "pydantic-settings>=2.2.0",
     "langchain-openai",
-    "langchain-chroma",
     "pandas",
-    "langsmith",
+    "braintrust[all]==0.0.190",
+    "openai",
+    "autoevals",
+    "pinecone[asyncio,grpc]",
+    "nest-asyncio>=1.6.0",
 ]
 
 [tool.uv]

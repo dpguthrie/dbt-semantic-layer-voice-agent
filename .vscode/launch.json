@@ -11,5 +11,18 @@
       "program": "${file}",
       "console": "integratedTerminal"
     },
+    {
+      "name": "Debug App",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "src/server/app.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "subProcess": true,
+      "cwd": "${workspaceFolder}"
+    }
   ]
 }
